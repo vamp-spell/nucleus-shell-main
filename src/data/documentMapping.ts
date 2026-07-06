@@ -118,7 +118,7 @@ const MOCK_TRAVELLER_SETS: Record<string, TravellerDoc[]> = {
   ],
 };
 
-function defaultTravellers(orderId: string, pax: number, country: string): TravellerDoc[] {
+function defaultTravellers(_orderId: string, pax: number, country: string): TravellerDoc[] {
   const types = JURISDICTION_DOC_TYPES[country] ?? JURISDICTION_DOC_TYPES.default;
   return Array.from({ length: pax }, (_, i) => ({
     id: i + 1,

@@ -96,8 +96,8 @@ export default function OrderDetail() {
 
   const visaBadge = VISA_BADGE[order.visaType] ?? { bg: "#F1EFE8", color: "#888886" };
   const statusBadge = STATUS_BADGE[detail.status] ?? { bg: "#F1EFE8", color: "#888886" };
-  const draftedCount = travellers.filter((t) => t.draftState === "done").length;
   const unreadChat = order.chatUnread;
+  const orderIdStr = order.id;
 
   function showToast(text: string) {
     if (toastRef.current !== null) clearTimeout(toastRef.current);
@@ -106,10 +106,10 @@ export default function OrderDetail() {
   }
 
   function handleCopyOrderId() {
-    navigator.clipboard.writeText(order.id);
+    navigator.clipboard.writeText(orderIdStr);
     setCopiedOrderId(true);
     setTimeout(() => setCopiedOrderId(false), 1200);
-    showToast(`${order.id} copied`);
+    showToast(`${orderIdStr} copied`);
   }
 
   function handleCopyEmbassyRef(id: string, value: string, e: MouseEvent) {

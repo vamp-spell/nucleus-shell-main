@@ -944,7 +944,6 @@ function InnerDocumentMapping({
   onDone: () => void;
 }) {
   const { token } = useToken();
-  const country = orderId ? getOrderCountry(orderId) : '';
   const visaLabel = order ? `${order.country} ${order.visaCategory}` : 'Visa';
 
   const travellerOptions = [
