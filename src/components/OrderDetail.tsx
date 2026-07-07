@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Select, Modal, Spin, Tooltip, ConfigProvider, Dropdown } from 'antd';
 import { LockOutlined, CheckCircleFilled } from '@ant-design/icons';
 import CommsTab from "./CommsTab";
+import EmbassyRefModal from "./EmbassyRefModal";
+import CardModal from "./CardModal";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import AddOnsDrawer from "./AddOnsDrawer";
@@ -61,11 +63,6 @@ function isJurisdictionApplicable(country: string): boolean {
 }
 
 type TabId = "application" | "documents" | "comms" | "automation" | "vri";
-
-interface EditingCell {
-  travellerId: string;
-  field: "jurisdiction" | "embassyRefId" | "card";
-}
 
 function AnimatedCount({ value }: { value: number }) {
   return (
@@ -243,119 +240,33 @@ function VerdictCell({ traveller, onSetVerdict }: { traveller: Traveller; onSetV
 interface TravellerRowProps {
   traveller: Traveller;
   isSelected: boolean;
-  editingCell: EditingCell | null;
-  editValue: string;
   copiedEmbassyId: string | null;
   orderCountry: string;
   onToggleSelect: (id: string) => void;
-  onStartEdit: (id: string, field: EditingCell["field"], value: string, e: MouseEvent) => void;
-  onEditValueChange: (v: string) => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
   onOpenDraftModal: (t: Traveller) => void;
   onCopyEmbassyRef: (id: string, value: string, e: MouseEvent) => void;
   jurisdictionFlash: Set<string>;
   onSaveJurisdiction: (id: string, val: string) => void;
   onSetVerdict: (travellerId: string, verdict: VerdictState) => void;
-}
-
-type EditField = EditingCell["field"];
-
-function EditableCell({
-  travellerId,
-  field,
-  value,
-  icon,
-  placeholder,
-  editingCell,
-  editValue,
-  onStartEdit,
-  onEditValueChange,
-  onSaveEdit,
-  onCancelEdit,
-}: {
-  travellerId: string;
-  field: EditField;
-  value: string;
-  icon: React.ReactNode;
-  placeholder: string;
-  editingCell: EditingCell | null;
-  editValue: string;
-  onStartEdit: (id: string, field: EditField, value: string, e: MouseEvent) => void;
-  onEditValueChange: (v: string) => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
-}) {
-  const isEditing = editingCell?.travellerId === travellerId && editingCell?.field === field;
-
-  if (isEditing) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <input
-          type="text"
-          value={editValue}
-          autoFocus
-          onChange={(e) => onEditValueChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") onSaveEdit();
-            if (e.key === "Escape") onCancelEdit();
-          }}
-          className="w-[100px] bg-white border border-[#185FA5] rounded px-2 py-1 text-[11px] text-[#1A1A1A] outline-none"
-        />
-        <button
-          type="button"
-          onClick={onSaveEdit}
-          className="text-[10px] text-[#185FA5] font-medium cursor-pointer hover:underline"
-        >
-          Save
-        </button>
-      </div>
-    );
-  }
-
-  if (!value) {
-    return (
-      <button
-        type="button"
-        onClick={(e) => onStartEdit(travellerId, field, "", e)}
-        className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
-      >
-        <PlusIcon className="w-[10px] h-[10px]" />
-        <span>{placeholder}</span>
-      </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={(e) => onStartEdit(travellerId, field, value, e)}
-      className="flex items-center gap-1.5 text-[11px] text-[#1A1A1A] cursor-pointer hover:bg-[#F1EFE8] rounded px-1 py-0.5 transition-colors"
-    >
-      {icon}
-      <span>{value}</span>
-    </button>
-  );
+  onSaveField: (travellerId: string, field: 'embassyRefId' | 'card', value: string) => void;
 }
 
 function TravellerRow({
   traveller,
   isSelected,
-  editingCell,
-  editValue,
   copiedEmbassyId,
   orderCountry,
   onToggleSelect,
-  onStartEdit,
-  onEditValueChange,
-  onSaveEdit,
-  onCancelEdit,
   onOpenDraftModal,
   onCopyEmbassyRef,
   jurisdictionFlash,
   onSaveJurisdiction,
   onSetVerdict,
+  onSaveField,
 }: TravellerRowProps) {
+  const [embassyRefModalOpen, setEmbassyRefModalOpen] = useState(false);
+  const [cardModalOpen, setCardModalOpen] = useState(false);
+
   return (
     <div className={`flex min-h-[52px] border-b border-[#F1EFE8] items-center ${isSelected ? "bg-[#F0F4FF]" : "bg-white hover:bg-[#F9F9F7]"} transition-colors`}>
       {/* Checkbox */}
@@ -387,49 +298,77 @@ function TravellerRow({
       )}
 
       {/* Embassy Ref */}
-      <div className="flex-1 px-3 flex items-center gap-1.5">
-        <EditableCell
-          travellerId={traveller.id}
-          field="embassyRefId"
-          value={traveller.embassyRefId}
-          icon={<HashIcon className="w-[11px] h-[11px] text-[#888886]" />}
-          placeholder="Add"
-          editingCell={editingCell}
-          editValue={editValue}
-          onStartEdit={onStartEdit}
-          onEditValueChange={onEditValueChange}
-          onSaveEdit={onSaveEdit}
-          onCancelEdit={onCancelEdit}
-        />
-        {traveller.embassyRefId && !(editingCell?.travellerId === traveller.id && editingCell?.field === "embassyRefId") && (
+      <div className="flex-1 px-3 flex items-center gap-2">
+        {traveller.embassyRefId ? (
           <button
             type="button"
-            onClick={(e) => onCopyEmbassyRef(traveller.id, traveller.embassyRefId, e)}
+            onClick={() => setEmbassyRefModalOpen(true)}
+            className="flex items-center gap-1.5 text-[11px] text-[#1A1A1A] cursor-pointer hover:bg-[#F1EFE8] rounded px-1 py-0.5 transition-colors group"
+          >
+            <HashIcon className="w-[11px] h-[11px] text-[#888886]" />
+            <span>{traveller.embassyRefId}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEmbassyRefModalOpen(true)}
+            className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
+          >
+            <PlusIcon className="w-[10px] h-[10px]" />
+            <span>Add</span>
+          </button>
+        )}
+        {traveller.embassyRefId && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onCopyEmbassyRef(traveller.id, traveller.embassyRefId, e); }}
             className="flex items-center justify-center p-[3px] rounded hover:bg-[#E8E8E5] cursor-pointer"
             aria-label="Copy Embassy Ref"
           >
             <CopyIcon className={`w-[11px] h-[11px] ${copiedEmbassyId === traveller.id ? "text-[#3B6D11]" : "text-[#CCCCCA]"}`} />
           </button>
         )}
+        <EmbassyRefModal
+          open={embassyRefModalOpen}
+          existing={traveller.embassyRefId}
+          orderId=""
+          travellerId={traveller.id}
+          travellerName={traveller.name}
+          onClose={() => setEmbassyRefModalOpen(false)}
+          onSave={(val) => { onSaveField(traveller.id, 'embassyRefId', val); setEmbassyRefModalOpen(false); }}
+        />
       </div>
 
       {/* Card */}
-      <div className="flex-1 px-3 flex items-center">
-        <EditableCell
+      <div className="flex-1 px-3 flex items-center gap-1.5">
+        {traveller.card ? (
+          <button
+            type="button"
+            onClick={() => setCardModalOpen(true)}
+            className="flex items-center gap-1.5 text-[11px] text-[#1A1A1A] cursor-pointer hover:bg-[#F1EFE8] rounded px-1 py-0.5 transition-colors"
+          >
+            <CreditCardIcon className="w-[11px] h-[11px] text-[#888886]" />
+            <span>···{traveller.card}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setCardModalOpen(true)}
+            className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
+          >
+            <PlusIcon className="w-[10px] h-[10px]" />
+            <span>Add card</span>
+          </button>
+        )}
+        <CardModal
+          open={cardModalOpen}
+          existingLast4={traveller.card}
+          existingCardholderName=""
+          orderId=""
           travellerId={traveller.id}
-          field="card"
-          value={traveller.card ? `···${traveller.card}` : ""}
-          icon={<CreditCardIcon className="w-[11px] h-[11px] text-[#888886]" />}
-          placeholder="Add"
-          editingCell={editingCell}
-          editValue={editValue}
-          onStartEdit={(id, field, val, e) => {
-            const raw = val.startsWith("···") ? val.slice(3) : val;
-            onStartEdit(id, field, raw, e);
-          }}
-          onEditValueChange={onEditValueChange}
-          onSaveEdit={onSaveEdit}
-          onCancelEdit={onCancelEdit}
+          travellerName={traveller.name}
+          onClose={() => setCardModalOpen(false)}
+          onSave={(last4, _cardholderName, _brand) => { onSaveField(traveller.id, 'card', last4); setCardModalOpen(false); }}
         />
       </div>
 
@@ -448,15 +387,9 @@ function TravellerRow({
 
 interface ApplicationTabProps {
   travellers: Traveller[];
-  editingCell: EditingCell | null;
-  editValue: string;
   selectedIds: Set<string>;
   copiedEmbassyId: string | null;
   orderCountry: string;
-  onStartEdit: (travellerId: string, field: EditingCell["field"], value: string, e: MouseEvent) => void;
-  onEditValueChange: (v: string) => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
   onOpenDraftModal: (t: Traveller) => void;
@@ -464,19 +397,14 @@ interface ApplicationTabProps {
   jurisdictionFlash: Set<string>;
   onSaveJurisdiction: (travellerId: string, value: string) => void;
   onSetVerdict: (travellerId: string, verdict: VerdictState) => void;
+  onSaveField: (travellerId: string, field: 'embassyRefId' | 'card', value: string) => void;
 }
 
 function ApplicationTab({
   travellers,
-  editingCell,
-  editValue,
   selectedIds,
   copiedEmbassyId,
   orderCountry,
-  onStartEdit,
-  onEditValueChange,
-  onSaveEdit,
-  onCancelEdit,
   onToggleSelect,
   onToggleSelectAll,
   onOpenDraftModal,
@@ -484,6 +412,7 @@ function ApplicationTab({
   jurisdictionFlash,
   onSaveJurisdiction,
   onSetVerdict,
+  onSaveField,
 }: ApplicationTabProps) {
   const draftedCount = travellers.filter((t) => t.draftState === "drafted").length;
   const selectedArray = Array.from(selectedIds);
@@ -558,20 +487,15 @@ function ApplicationTab({
           key={traveller.id}
           traveller={traveller}
           isSelected={selectedIds.has(traveller.id)}
-          editingCell={editingCell}
-          editValue={editValue}
           copiedEmbassyId={copiedEmbassyId}
           orderCountry={orderCountry}
           onToggleSelect={onToggleSelect}
-          onStartEdit={onStartEdit}
-          onEditValueChange={onEditValueChange}
-          onSaveEdit={onSaveEdit}
-          onCancelEdit={onCancelEdit}
           onOpenDraftModal={onOpenDraftModal}
           onCopyEmbassyRef={onCopyEmbassyRef}
           jurisdictionFlash={jurisdictionFlash}
           onSaveJurisdiction={onSaveJurisdiction}
           onSetVerdict={onSetVerdict}
+          onSaveField={onSaveField}
         />
       ))}
 
@@ -607,8 +531,6 @@ export default function OrderDetail() {
   const [chatOpen, setChatOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [travellers, setTravellers] = useState<Traveller[]>(detail?.travellers ?? []);
-  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
-  const [editValue, setEditValue] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [draftModalTraveller, setDraftModalTraveller] = useState<Traveller | null>(null);
   const [jurisdictionFlash, setJurisdictionFlash] = useState<Set<string>>(new Set());
@@ -660,26 +582,8 @@ export default function OrderDetail() {
     showToast("Embassy Ref copied");
   }
 
-  function startEdit(travellerId: string, field: EditingCell["field"], currentValue: string, e: MouseEvent) {
-    e.stopPropagation();
-    setEditingCell({ travellerId, field });
-    setEditValue(currentValue);
-  }
-
-  function saveEdit() {
-    if (!editingCell) return;
-    setTravellers((prev) =>
-      prev.map((t) =>
-        t.id === editingCell.travellerId ? { ...t, [editingCell.field]: editValue } : t
-      )
-    );
-    setEditingCell(null);
-    setEditValue("");
-  }
-
-  function cancelEdit() {
-    setEditingCell(null);
-    setEditValue("");
+  function saveField(travellerId: string, field: 'embassyRefId' | 'card', value: string) {
+    setTravellers(prev => prev.map(t => t.id === travellerId ? { ...t, [field]: value } : t));
   }
 
   function toggleSelect(id: string) {
@@ -974,15 +878,9 @@ export default function OrderDetail() {
             {activeTab === "application" && (
               <ApplicationTab
                 travellers={travellers}
-                editingCell={editingCell}
-                editValue={editValue}
                 selectedIds={selectedIds}
                 copiedEmbassyId={copiedEmbassyId}
                 orderCountry={order.country}
-                onStartEdit={startEdit}
-                onEditValueChange={setEditValue}
-                onSaveEdit={saveEdit}
-                onCancelEdit={cancelEdit}
                 onToggleSelect={toggleSelect}
                 onToggleSelectAll={toggleSelectAll}
                 onOpenDraftModal={openDraftModal}
@@ -990,6 +888,7 @@ export default function OrderDetail() {
                 jurisdictionFlash={jurisdictionFlash}
                 onSaveJurisdiction={saveJurisdiction}
                 onSetVerdict={setVerdict}
+                onSaveField={saveField}
               />
             )}
             {activeTab === "documents" && <PlaceholderTab label="Documents" />}
