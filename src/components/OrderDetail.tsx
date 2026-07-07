@@ -1,6 +1,6 @@
 import { useState, useRef, type MouseEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Select, Modal, Spin, Tooltip, ConfigProvider } from 'antd';
+import { Select, Modal, Spin, Tooltip, ConfigProvider, Dropdown } from 'antd';
 import { LockOutlined, CheckCircleFilled } from '@ant-design/icons';
 import CommsTab from "./CommsTab";
 import Sidebar from "./Sidebar";
@@ -163,8 +163,34 @@ function DraftCell({
   );
 }
 
-function VerdictCell({ verdict }: { verdict: VerdictState }) {
-  if (verdict === "none") return <span className="text-[12px] text-[#AAAAAA]">—</span>;
+function VerdictCell({ traveller, onSetVerdict }: { traveller: Traveller; onSetVerdict: (id: string, v: VerdictState) => void }) {
+  const { verdict, draftState } = traveller;
+
+  const verdictMenu = {
+    items: [
+      {
+        key: 'approved',
+        label: (
+          <div className="flex items-center gap-2 py-0.5">
+            <CircleCheckIcon className="w-[13px] h-[13px] text-[#3B6D11]" />
+            <span className="text-[12px]">Approved</span>
+          </div>
+        ),
+        onClick: () => onSetVerdict(traveller.id, 'approved'),
+      },
+      {
+        key: 'rejected',
+        label: (
+          <div className="flex items-center gap-2 py-0.5">
+            <CircleXIcon className="w-[13px] h-[13px] text-[#A32D2D]" />
+            <span className="text-[12px]">Rejected</span>
+          </div>
+        ),
+        onClick: () => onSetVerdict(traveller.id, 'rejected'),
+      },
+    ],
+  };
+
   if (verdict === "fetching") {
     return (
       <div className="flex items-center gap-1.5 text-[11px] text-[#888886]">
@@ -173,20 +199,45 @@ function VerdictCell({ verdict }: { verdict: VerdictState }) {
       </div>
     );
   }
+
   if (verdict === "approved") {
     return (
-      <div className="flex items-center gap-1.5 text-[11px] text-[#3B6D11] font-medium">
-        <CircleCheckIcon className="w-[13px] h-[13px]" />
-        <span>Approved</span>
-      </div>
+      <Dropdown menu={verdictMenu} trigger={['click']} placement="bottomLeft">
+        <div className="flex items-center gap-1.5 text-[11px] text-[#3B6D11] font-medium cursor-pointer hover:opacity-75 transition-opacity">
+          <CircleCheckIcon className="w-[13px] h-[13px]" />
+          <span>Approved</span>
+        </div>
+      </Dropdown>
     );
   }
-  return (
-    <div className="flex items-center gap-1.5 text-[11px] text-[#A32D2D] font-medium">
-      <CircleXIcon className="w-[13px] h-[13px]" />
-      <span>Rejected</span>
-    </div>
-  );
+
+  if (verdict === "rejected") {
+    return (
+      <Dropdown menu={verdictMenu} trigger={['click']} placement="bottomLeft">
+        <div className="flex items-center gap-1.5 text-[11px] text-[#A32D2D] font-medium cursor-pointer hover:opacity-75 transition-opacity">
+          <CircleXIcon className="w-[13px] h-[13px]" />
+          <span>Rejected</span>
+        </div>
+      </Dropdown>
+    );
+  }
+
+  // none — show set button only if drafted
+  if (draftState === 'drafted') {
+    return (
+      <Dropdown menu={verdictMenu} trigger={['click']} placement="bottomLeft">
+        <button
+          type="button"
+          className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
+        >
+          <PlusIcon className="w-[10px] h-[10px]" />
+          <span>Set verdict</span>
+        </button>
+      </Dropdown>
+    );
+  }
+
+  return <span className="text-[12px] text-[#AAAAAA]">—</span>;
 }
 
 interface TravellerRowProps {
@@ -205,6 +256,7 @@ interface TravellerRowProps {
   onCopyEmbassyRef: (id: string, value: string, e: MouseEvent) => void;
   jurisdictionFlash: Set<string>;
   onSaveJurisdiction: (id: string, val: string) => void;
+  onSetVerdict: (travellerId: string, verdict: VerdictState) => void;
 }
 
 type EditField = EditingCell["field"];
@@ -302,6 +354,7 @@ function TravellerRow({
   onCopyEmbassyRef,
   jurisdictionFlash,
   onSaveJurisdiction,
+  onSetVerdict,
 }: TravellerRowProps) {
   return (
     <div className={`flex min-h-[52px] border-b border-[#F1EFE8] items-center ${isSelected ? "bg-[#F0F4FF]" : "bg-white hover:bg-[#F9F9F7]"} transition-colors`}>
@@ -316,8 +369,8 @@ function TravellerRow({
       </div>
 
       {/* Traveller */}
-      <div className="w-[160px] px-3 flex flex-col justify-center shrink-0">
-        <span className="text-[13px] font-medium text-[#1A1A1A]">{traveller.name}</span>
+      <div className="flex-1 px-3 flex flex-col justify-center min-w-0">
+        <span className="text-[13px] font-medium text-[#1A1A1A] truncate">{traveller.name}</span>
         <span className="text-[11px] text-[#888886] font-mono">{traveller.id}</span>
       </div>
 
@@ -361,7 +414,7 @@ function TravellerRow({
       </div>
 
       {/* Card */}
-      <div className="w-[120px] px-3 flex items-center">
+      <div className="flex-1 px-3 flex items-center">
         <EditableCell
           travellerId={traveller.id}
           field="card"
@@ -381,13 +434,13 @@ function TravellerRow({
       </div>
 
       {/* Draft */}
-      <div className="w-[120px] px-3 flex items-center">
+      <div className="flex-1 px-3 flex items-center">
         <DraftCell traveller={traveller} onOpenDraftModal={onOpenDraftModal} />
       </div>
 
       {/* Verdict */}
-      <div className="w-[120px] px-3 flex items-center">
-        <VerdictCell verdict={traveller.verdict} />
+      <div className="flex-1 px-3 flex items-center">
+        <VerdictCell traveller={traveller} onSetVerdict={onSetVerdict} />
       </div>
     </div>
   );
@@ -410,6 +463,7 @@ interface ApplicationTabProps {
   onCopyEmbassyRef: (id: string, value: string, e: MouseEvent) => void;
   jurisdictionFlash: Set<string>;
   onSaveJurisdiction: (travellerId: string, value: string) => void;
+  onSetVerdict: (travellerId: string, verdict: VerdictState) => void;
 }
 
 function ApplicationTab({
@@ -429,6 +483,7 @@ function ApplicationTab({
   onCopyEmbassyRef,
   jurisdictionFlash,
   onSaveJurisdiction,
+  onSetVerdict,
 }: ApplicationTabProps) {
   const draftedCount = travellers.filter((t) => t.draftState === "drafted").length;
   const selectedArray = Array.from(selectedIds);
@@ -455,14 +510,14 @@ function ApplicationTab({
             className="w-[13px] h-[13px] cursor-pointer accent-[#1A1A1A]"
           />
         </div>
-        <div className="w-[160px] px-3 py-[6px] text-[10px] font-medium text-[#888886]">Traveller</div>
+        <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Traveller</div>
         {isJurisdictionApplicable(orderCountry) && (
           <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Jurisdiction</div>
         )}
         <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Embassy Ref</div>
-        <div className="w-[120px] px-3 py-[6px] text-[10px] font-medium text-[#888886]">Card</div>
-        <div className="w-[120px] px-3 py-[6px] text-[10px] font-medium text-[#888886]">Draft</div>
-        <div className="w-[120px] px-3 py-[6px] text-[10px] font-medium text-[#888886]">Verdict</div>
+        <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Card</div>
+        <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Draft</div>
+        <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Verdict</div>
       </div>
 
       {/* Bulk action bar */}
@@ -516,6 +571,7 @@ function ApplicationTab({
           onCopyEmbassyRef={onCopyEmbassyRef}
           jurisdictionFlash={jurisdictionFlash}
           onSaveJurisdiction={onSaveJurisdiction}
+          onSetVerdict={onSetVerdict}
         />
       ))}
 
@@ -656,6 +712,10 @@ export default function OrderDetail() {
       setTravellers(prev => prev.map(t => t.id === tId ? { ...t, draftState: 'drafted' as DraftState } : t));
       setSelectedIds(new Set());
     }, 1800);
+  }
+
+  function setVerdict(travellerId: string, verdict: VerdictState) {
+    setTravellers(prev => prev.map(t => t.id === travellerId ? { ...t, verdict } : t));
   }
 
   function saveJurisdiction(travellerId: string, value: string) {
@@ -929,6 +989,7 @@ export default function OrderDetail() {
                 onCopyEmbassyRef={handleCopyEmbassyRef}
                 jurisdictionFlash={jurisdictionFlash}
                 onSaveJurisdiction={saveJurisdiction}
+                onSetVerdict={setVerdict}
               />
             )}
             {activeTab === "documents" && <PlaceholderTab label="Documents" />}
