@@ -68,7 +68,7 @@ function App() {
               className="flex-1 min-h-screen bg-white transition-[margin-left] duration-200 ease-in-out"
               style={{ marginLeft: sidebarWidth }}
             >
-              <Header />
+              <Header title="Orders" />
               <OrdersContent
                 searchQuery={searchQuery}
                 setSearchQuery={setSearchQuery}
