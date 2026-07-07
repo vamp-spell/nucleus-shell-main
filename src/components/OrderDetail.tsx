@@ -2,6 +2,8 @@ import { useState, useRef, type MouseEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import AddOnsDrawer from "./AddOnsDrawer";
+import { addOnStringsToSelections, selectionsToDisplayNames, type SelectedAddOn } from "../data/addons";
 import {
   BackArrowIcon,
   CalendarIcon,
@@ -82,6 +84,10 @@ export default function OrderDetail() {
   const [copiedEmbassyId, setCopiedEmbassyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
   const toastRef = useRef<number | null>(null);
+  const [addOnsDrawerOpen, setAddOnsDrawerOpen] = useState(false);
+  const [selectedAddOns, setSelectedAddOns] = useState<SelectedAddOn[]>(
+    detail ? addOnStringsToSelections(detail.addOns) : []
+  );
 
   if (!order || !detail) {
     return (
@@ -326,21 +332,27 @@ export default function OrderDetail() {
             </span>
           </div>
 
-          {detail.addOns.length > 0 && (
-            <>
-              <div className="w-px h-8 bg-[#E8E8E5]" />
-              <div className="flex flex-col gap-0.5">
-                <span className="text-[9px] font-medium uppercase tracking-wide text-[#AAAAAA]">Add-ons</span>
-                <div className="flex items-center gap-1">
-                  {detail.addOns.map((addon) => (
-                    <span key={addon} className="text-[10px] px-[6px] py-[2px] rounded-[3px] bg-[#F1EFE8] text-[#888886]">
-                      {addon}
-                    </span>
-                  ))}
-                </div>
+          <>
+            <div className="w-px h-8 bg-[#E8E8E5]" />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[9px] font-medium uppercase tracking-wide text-[#AAAAAA]">Add-ons</span>
+              <div className="flex items-center gap-1 flex-wrap">
+                {selectionsToDisplayNames(selectedAddOns).map((name) => (
+                  <span key={name} className="text-[10px] px-[6px] py-[2px] rounded-[3px] bg-[#F1EFE8] text-[#888886]">
+                    {name}
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setAddOnsDrawerOpen(true)}
+                  className="flex items-center gap-0.5 text-[10px] px-[6px] py-[2px] rounded-[3px] bg-[#E6F1FB] text-[#185FA5] hover:bg-[#CCE0F5] cursor-pointer transition-colors"
+                >
+                  <PlusIcon className="w-[10px] h-[10px]" />
+                  {selectedAddOns.length === 0 ? "Add add-ons" : "Edit add-ons"}
+                </button>
               </div>
-            </>
-          )}
+            </div>
+          </>
 
           {detail.remarks && (
             <>
@@ -514,6 +526,14 @@ export default function OrderDetail() {
           </div>
         </div>
       )}
+
+      <AddOnsDrawer
+        orderId={orderIdStr}
+        open={addOnsDrawerOpen}
+        onClose={() => setAddOnsDrawerOpen(false)}
+        existingSelections={selectedAddOns}
+        onUpdate={async (sels) => { setSelectedAddOns(sels); }}
+      />
 
       {toast && (
         <div
