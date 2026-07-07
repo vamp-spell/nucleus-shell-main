@@ -1,5 +1,6 @@
 export type DraftState = 'locked' | 'ready' | 'processing' | 'drafted';
 export type VerdictState = 'none' | 'fetching' | 'approved' | 'rejected';
+export type ApplicationStatus = 'created' | 'in_progress' | 'ready_to_submit' | 'submitting' | 'awaiting_result' | 'completed' | 'void';
 
 export interface Traveller {
   id: string;
@@ -9,6 +10,8 @@ export interface Traveller {
   card: string;
   draftState: DraftState;
   verdict: VerdictState;
+  applicationStatus: ApplicationStatus;
+  manualStatus?: { by: string; at: string };
 }
 
 export interface OrderDetail {
@@ -36,8 +39,8 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: false,
     travellers: [
-      { id: 'TRV-001', name: 'Rahul Sharma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
-      { id: 'TRV-002', name: 'Priya Sharma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
+      { id: 'TRV-001', name: 'Rahul Sharma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
+      { id: 'TRV-002', name: 'Priya Sharma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -55,10 +58,10 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: false,
     travellers: [
-      { id: 'TRV-003', name: 'Anil Verma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
-      { id: 'TRV-004', name: 'Sunita Verma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
-      { id: 'TRV-005', name: 'Rohan Verma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
-      { id: 'TRV-006', name: 'Kavya Verma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
+      { id: 'TRV-003', name: 'Anil Verma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
+      { id: 'TRV-004', name: 'Sunita Verma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
+      { id: 'TRV-005', name: 'Rohan Verma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
+      { id: 'TRV-006', name: 'Kavya Verma', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -76,8 +79,8 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: false,
     travellers: [
-      { id: 'TRV-007', name: 'Deepak Nair', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
-      { id: 'TRV-008', name: 'Anjali Nair', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
+      { id: 'TRV-007', name: 'Deepak Nair', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
+      { id: 'TRV-008', name: 'Anjali Nair', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -94,7 +97,7 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: 'Escalated by VM — SLA breach risk.',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-009', name: 'Farouk Patel', jurisdiction: 'Mumbai', embassyRefId: 'ZA2025-0112', card: '4521', draftState: 'ready', verdict: 'none' },
+      { id: 'TRV-009', name: 'Farouk Patel', jurisdiction: 'Mumbai', embassyRefId: 'ZA2025-0112', card: '4521', draftState: 'ready', verdict: 'none', applicationStatus: 'ready_to_submit' },
     ],
     chatMessages: [
       { author: 'Visa Manager', text: 'Please prioritise this order. Client has been waiting 5 days.', time: '2h ago' },
@@ -117,8 +120,8 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-010', name: 'Sanjay Menon', jurisdiction: 'Delhi', embassyRefId: 'OM2025-0045', card: '8892', draftState: 'drafted', verdict: 'none' },
-      { id: 'TRV-011', name: 'Rekha Menon', jurisdiction: 'Delhi', embassyRefId: '', card: '', draftState: 'ready', verdict: 'none' },
+      { id: 'TRV-010', name: 'Sanjay Menon', jurisdiction: 'Delhi', embassyRefId: 'OM2025-0045', card: '8892', draftState: 'drafted', verdict: 'none', applicationStatus: 'awaiting_result' },
+      { id: 'TRV-011', name: 'Rekha Menon', jurisdiction: 'Delhi', embassyRefId: '', card: '', draftState: 'ready', verdict: 'none', applicationStatus: 'ready_to_submit' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -137,7 +140,7 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-012', name: 'Vikram Singh', jurisdiction: 'Bangalore', embassyRefId: 'BH2025-0033', card: '3341', draftState: 'drafted', verdict: 'none' },
+      { id: 'TRV-012', name: 'Vikram Singh', jurisdiction: 'Bangalore', embassyRefId: 'BH2025-0033', card: '3341', draftState: 'drafted', verdict: 'none', applicationStatus: 'awaiting_result' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -156,11 +159,11 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: 'Bulk order — 44 pax. 17 completed.',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-020', name: 'Amit Kulkarni', jurisdiction: 'Mumbai', embassyRefId: 'ID2025-0201', card: '7712', draftState: 'drafted', verdict: 'approved' },
-      { id: 'TRV-021', name: 'Sneha Kulkarni', jurisdiction: 'Mumbai', embassyRefId: 'ID2025-0202', card: '7712', draftState: 'drafted', verdict: 'approved' },
-      { id: 'TRV-022', name: 'Rahul Desai', jurisdiction: 'Pune', embassyRefId: 'ID2025-0203', card: '5534', draftState: 'drafted', verdict: 'fetching' },
-      { id: 'TRV-023', name: 'Pooja Desai', jurisdiction: 'Pune', embassyRefId: '', card: '', draftState: 'ready', verdict: 'none' },
-      { id: 'TRV-024', name: 'Kiran Rao', jurisdiction: '', embassyRefId: '', card: '', draftState: 'ready', verdict: 'none' },
+      { id: 'TRV-020', name: 'Amit Kulkarni', jurisdiction: 'Mumbai', embassyRefId: 'ID2025-0201', card: '7712', draftState: 'drafted', verdict: 'approved', applicationStatus: 'completed' },
+      { id: 'TRV-021', name: 'Sneha Kulkarni', jurisdiction: 'Mumbai', embassyRefId: 'ID2025-0202', card: '7712', draftState: 'drafted', verdict: 'approved', applicationStatus: 'completed' },
+      { id: 'TRV-022', name: 'Rahul Desai', jurisdiction: 'Pune', embassyRefId: 'ID2025-0203', card: '5534', draftState: 'drafted', verdict: 'fetching', applicationStatus: 'awaiting_result' },
+      { id: 'TRV-023', name: 'Pooja Desai', jurisdiction: 'Pune', embassyRefId: '', card: '', draftState: 'ready', verdict: 'none', applicationStatus: 'ready_to_submit' },
+      { id: 'TRV-024', name: 'Kiran Rao', jurisdiction: '', embassyRefId: '', card: '', draftState: 'ready', verdict: 'none', applicationStatus: 'ready_to_submit' },
     ],
     chatMessages: [
       { author: 'Jitendra Kumar', text: 'Processing batch 1 now. Will update on each set.', time: '30m ago', isVE: true },
@@ -181,11 +184,11 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: 'Blocked pending TA response.',
     documentsMapped: false,
     travellers: [
-      { id: 'TRV-030', name: 'Siddharth Joshi', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
-      { id: 'TRV-031', name: 'Nandini Joshi', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
-      { id: 'TRV-032', name: 'Aryan Joshi', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
-      { id: 'TRV-033', name: 'Riya Joshi', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
-      { id: 'TRV-034', name: 'Vihaan Joshi', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
+      { id: 'TRV-030', name: 'Siddharth Joshi', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
+      { id: 'TRV-031', name: 'Nandini Joshi', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
+      { id: 'TRV-032', name: 'Aryan Joshi', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
+      { id: 'TRV-033', name: 'Riya Joshi', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
+      { id: 'TRV-034', name: 'Vihaan Joshi', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -203,8 +206,8 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: 'Waiting for vendor confirmation.',
     documentsMapped: false,
     travellers: [
-      { id: 'TRV-040', name: 'Pradeep Iyer', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
-      { id: 'TRV-041', name: 'Lakshmi Iyer', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none' },
+      { id: 'TRV-040', name: 'Pradeep Iyer', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
+      { id: 'TRV-041', name: 'Lakshmi Iyer', jurisdiction: '', embassyRefId: '', card: '', draftState: 'locked', verdict: 'none', applicationStatus: 'created' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -222,7 +225,7 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-050', name: 'Nikhil Bhat', jurisdiction: 'Hyderabad', embassyRefId: 'IL2025-0009', card: '2290', draftState: 'ready', verdict: 'none' },
+      { id: 'TRV-050', name: 'Nikhil Bhat', jurisdiction: 'Hyderabad', embassyRefId: 'IL2025-0009', card: '2290', draftState: 'ready', verdict: 'none', applicationStatus: 'ready_to_submit' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -240,8 +243,8 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-060', name: 'Gaurav Mehta', jurisdiction: 'Chennai', embassyRefId: 'VN2025-0801', card: '6612', draftState: 'drafted', verdict: 'fetching' },
-      { id: 'TRV-061', name: 'Ritu Mehta', jurisdiction: 'Chennai', embassyRefId: 'VN2025-0802', card: '6612', draftState: 'drafted', verdict: 'fetching' },
+      { id: 'TRV-060', name: 'Gaurav Mehta', jurisdiction: 'Chennai', embassyRefId: 'VN2025-0801', card: '6612', draftState: 'drafted', verdict: 'fetching', applicationStatus: 'awaiting_result' },
+      { id: 'TRV-061', name: 'Ritu Mehta', jurisdiction: 'Chennai', embassyRefId: 'VN2025-0802', card: '6612', draftState: 'drafted', verdict: 'fetching', applicationStatus: 'awaiting_result' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -261,9 +264,9 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-062', name: 'Suresh Pillai', jurisdiction: 'Kochi', embassyRefId: 'VN2025-0803', card: '9981', draftState: 'drafted', verdict: 'fetching' },
-      { id: 'TRV-063', name: 'Latha Pillai', jurisdiction: 'Kochi', embassyRefId: 'VN2025-0804', card: '9981', draftState: 'drafted', verdict: 'approved' },
-      { id: 'TRV-064', name: 'Dev Pillai', jurisdiction: 'Kochi', embassyRefId: 'VN2025-0805', card: '9981', draftState: 'drafted', verdict: 'approved' },
+      { id: 'TRV-062', name: 'Suresh Pillai', jurisdiction: 'Kochi', embassyRefId: 'VN2025-0803', card: '9981', draftState: 'drafted', verdict: 'fetching', applicationStatus: 'awaiting_result' },
+      { id: 'TRV-063', name: 'Latha Pillai', jurisdiction: 'Kochi', embassyRefId: 'VN2025-0804', card: '9981', draftState: 'drafted', verdict: 'approved', applicationStatus: 'completed' },
+      { id: 'TRV-064', name: 'Dev Pillai', jurisdiction: 'Kochi', embassyRefId: 'VN2025-0805', card: '9981', draftState: 'drafted', verdict: 'approved', applicationStatus: 'completed' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -284,7 +287,7 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-065', name: 'Anita Rao', jurisdiction: 'Bangalore', embassyRefId: 'VN2025-0440', card: '1123', draftState: 'drafted', verdict: 'approved' },
+      { id: 'TRV-065', name: 'Anita Rao', jurisdiction: 'Bangalore', embassyRefId: 'VN2025-0440', card: '1123', draftState: 'drafted', verdict: 'approved', applicationStatus: 'completed' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -304,8 +307,8 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-070', name: 'Rajesh Kumar', jurisdiction: 'Delhi', embassyRefId: 'AE2025-0221', card: '4412', draftState: 'drafted', verdict: 'approved' },
-      { id: 'TRV-071', name: 'Sunita Kumar', jurisdiction: 'Delhi', embassyRefId: 'AE2025-0222', card: '4412', draftState: 'drafted', verdict: 'approved' },
+      { id: 'TRV-070', name: 'Rajesh Kumar', jurisdiction: 'Delhi', embassyRefId: 'AE2025-0221', card: '4412', draftState: 'drafted', verdict: 'approved', applicationStatus: 'completed' },
+      { id: 'TRV-071', name: 'Sunita Kumar', jurisdiction: 'Delhi', embassyRefId: 'AE2025-0222', card: '4412', draftState: 'drafted', verdict: 'approved', applicationStatus: 'completed' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -325,10 +328,10 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-080', name: 'Vijay Nambiar', jurisdiction: 'Kochi', embassyRefId: 'TW2025-0041', card: '7723', draftState: 'drafted', verdict: 'fetching' },
-      { id: 'TRV-081', name: 'Sheela Nambiar', jurisdiction: 'Kochi', embassyRefId: 'TW2025-0042', card: '7723', draftState: 'drafted', verdict: 'fetching' },
-      { id: 'TRV-082', name: 'Asha Nambiar', jurisdiction: 'Kochi', embassyRefId: 'TW2025-0043', card: '7723', draftState: 'drafted', verdict: 'fetching' },
-      { id: 'TRV-083', name: 'Rajan Nambiar', jurisdiction: 'Kochi', embassyRefId: 'TW2025-0044', card: '7723', draftState: 'drafted', verdict: 'fetching' },
+      { id: 'TRV-080', name: 'Vijay Nambiar', jurisdiction: 'Kochi', embassyRefId: 'TW2025-0041', card: '7723', draftState: 'drafted', verdict: 'fetching', applicationStatus: 'awaiting_result' },
+      { id: 'TRV-081', name: 'Sheela Nambiar', jurisdiction: 'Kochi', embassyRefId: 'TW2025-0042', card: '7723', draftState: 'drafted', verdict: 'fetching', applicationStatus: 'awaiting_result' },
+      { id: 'TRV-082', name: 'Asha Nambiar', jurisdiction: 'Kochi', embassyRefId: 'TW2025-0043', card: '7723', draftState: 'drafted', verdict: 'fetching', applicationStatus: 'awaiting_result' },
+      { id: 'TRV-083', name: 'Rajan Nambiar', jurisdiction: 'Kochi', embassyRefId: 'TW2025-0044', card: '7723', draftState: 'drafted', verdict: 'fetching', applicationStatus: 'awaiting_result' },
     ],
     chatMessages: [],
     historyEvents: [
@@ -347,7 +350,7 @@ const ORDER_DETAILS: Record<string, OrderDetail> = {
     remarks: '',
     documentsMapped: true,
     travellers: [
-      { id: 'TRV-090', name: 'Harish Gupta', jurisdiction: 'Mumbai', embassyRefId: 'CN2025-0019', card: '8834', draftState: 'drafted', verdict: 'approved' },
+      { id: 'TRV-090', name: 'Harish Gupta', jurisdiction: 'Mumbai', embassyRefId: 'CN2025-0019', card: '8834', draftState: 'drafted', verdict: 'approved', applicationStatus: 'completed' },
     ],
     chatMessages: [],
     historyEvents: [

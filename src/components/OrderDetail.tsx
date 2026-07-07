@@ -38,7 +38,8 @@ import {
   submittedOrders,
   type Order,
 } from "../data/orders";
-import { getOrderDetail, type Traveller, type DraftState, type VerdictState } from "../data/orderDetails";
+import { getOrderDetail, type Traveller, type DraftState, type VerdictState, type ApplicationStatus } from "../data/orderDetails";
+import StatusCell from "./StatusCell";
 
 const ALL_ORDERS: Order[] = [...newOrders, ...attentionOrders, ...progressOrders, ...submittedOrders];
 
@@ -249,6 +250,7 @@ interface TravellerRowProps {
   onSaveJurisdiction: (id: string, val: string) => void;
   onSetVerdict: (travellerId: string, verdict: VerdictState) => void;
   onSaveField: (travellerId: string, field: 'embassyRefId' | 'card', value: string) => void;
+  onSetApplicationStatus: (travellerId: string, status: ApplicationStatus) => void;
 }
 
 function TravellerRow({
@@ -263,12 +265,13 @@ function TravellerRow({
   onSaveJurisdiction,
   onSetVerdict,
   onSaveField,
+  onSetApplicationStatus,
 }: TravellerRowProps) {
   const [embassyRefModalOpen, setEmbassyRefModalOpen] = useState(false);
   const [cardModalOpen, setCardModalOpen] = useState(false);
 
   return (
-    <div className={`flex min-h-[52px] border-b border-[#F1EFE8] items-center ${isSelected ? "bg-[#F0F4FF]" : "bg-white hover:bg-[#F9F9F7]"} transition-colors`}>
+    <div className={`flex min-h-[52px] border-b border-[#F1EFE8] items-center ${isSelected ? "bg-[#F0F4FF]" : "bg-white hover:bg-[#F9F9F7]"} transition-colors ${traveller.applicationStatus === 'void' ? 'opacity-60' : ''}`}>
       {/* Checkbox */}
       <div className="w-8 flex items-center justify-center px-2 shrink-0">
         <input
@@ -283,6 +286,17 @@ function TravellerRow({
       <div className="flex-1 px-3 flex flex-col justify-center min-w-0">
         <span className="text-[13px] font-medium text-[#1A1A1A] truncate">{traveller.name}</span>
         <span className="text-[11px] text-[#888886] font-mono">{traveller.id}</span>
+      </div>
+
+      {/* Application Status */}
+      <div className="flex-1 px-3 flex items-center">
+        <StatusCell
+          travellerId={traveller.id}
+          travellerName={traveller.name}
+          status={traveller.applicationStatus}
+          manualStatus={traveller.manualStatus}
+          onStatusChange={onSetApplicationStatus}
+        />
       </div>
 
       {/* Jurisdiction */}
@@ -398,6 +412,8 @@ interface ApplicationTabProps {
   onSaveJurisdiction: (travellerId: string, value: string) => void;
   onSetVerdict: (travellerId: string, verdict: VerdictState) => void;
   onSaveField: (travellerId: string, field: 'embassyRefId' | 'card', value: string) => void;
+  onSetApplicationStatus: (travellerId: string, status: ApplicationStatus) => void;
+  setSelectedIds: (ids: Set<string>) => void;
 }
 
 function ApplicationTab({
@@ -413,6 +429,8 @@ function ApplicationTab({
   onSaveJurisdiction,
   onSetVerdict,
   onSaveField,
+  onSetApplicationStatus,
+  setSelectedIds,
 }: ApplicationTabProps) {
   const draftedCount = travellers.filter((t) => t.draftState === "drafted").length;
   const selectedArray = Array.from(selectedIds);
@@ -440,6 +458,7 @@ function ApplicationTab({
           />
         </div>
         <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Traveller</div>
+        <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Status</div>
         {isJurisdictionApplicable(orderCountry) && (
           <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Jurisdiction</div>
         )}
@@ -466,6 +485,25 @@ function ApplicationTab({
               Draft selected
             </button>
           )}
+          <Select
+            size="small"
+            placeholder="Change status to…"
+            style={{ width: 160, fontSize: 11 }}
+            onChange={(val: ApplicationStatus) => {
+              const ids = Array.from(selectedIds);
+              ids.forEach(id => onSetApplicationStatus(id, val));
+              setSelectedIds(new Set());
+            }}
+            options={[
+              { label: 'Created', value: 'created' },
+              { label: 'In progress', value: 'in_progress' },
+              { label: 'Ready to submit', value: 'ready_to_submit' },
+              { label: 'Submitting', value: 'submitting' },
+              { label: 'Awaiting result', value: 'awaiting_result' },
+              { label: 'Completed', value: 'completed' },
+              { label: 'Void', value: 'void' },
+            ]}
+          />
           <button
             type="button"
             onClick={() => onToggleSelectAll()}
@@ -496,6 +534,7 @@ function ApplicationTab({
           onSaveJurisdiction={onSaveJurisdiction}
           onSetVerdict={onSetVerdict}
           onSaveField={onSaveField}
+          onSetApplicationStatus={onSetApplicationStatus}
         />
       ))}
 
@@ -620,6 +659,14 @@ export default function OrderDetail() {
 
   function setVerdict(travellerId: string, verdict: VerdictState) {
     setTravellers(prev => prev.map(t => t.id === travellerId ? { ...t, verdict } : t));
+  }
+
+  function setApplicationStatus(travellerId: string, newStatus: ApplicationStatus) {
+    setTravellers(prev => prev.map(t =>
+      t.id === travellerId
+        ? { ...t, applicationStatus: newStatus, manualStatus: { by: 'Meera Nair', at: 'Just now' } }
+        : t
+    ));
   }
 
   function saveJurisdiction(travellerId: string, value: string) {
@@ -889,6 +936,8 @@ export default function OrderDetail() {
                 onSaveJurisdiction={saveJurisdiction}
                 onSetVerdict={setVerdict}
                 onSaveField={saveField}
+                onSetApplicationStatus={setApplicationStatus}
+                setSelectedIds={setSelectedIds}
               />
             )}
             {activeTab === "documents" && <PlaceholderTab label="Documents" />}
