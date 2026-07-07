@@ -2,6 +2,7 @@ import { useState, useRef, type MouseEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Select, Modal, Spin, Tooltip, ConfigProvider } from 'antd';
 import { LockOutlined, CheckCircleFilled } from '@ant-design/icons';
+import CommsTab from "./CommsTab";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import AddOnsDrawer from "./AddOnsDrawer";
@@ -909,7 +910,7 @@ export default function OrderDetail() {
           </div>
 
           {/* Zone 5: Tab Content */}
-          <div className="flex-1 overflow-auto">
+          <div className={`flex-1 ${activeTab === "comms" ? "overflow-hidden flex flex-col" : "overflow-auto"}`}>
             {activeTab === "application" && (
               <ApplicationTab
                 travellers={travellers}
@@ -931,7 +932,14 @@ export default function OrderDetail() {
               />
             )}
             {activeTab === "documents" && <PlaceholderTab label="Documents" />}
-            {activeTab === "comms" && <PlaceholderTab label="Comms" />}
+            {activeTab === "comms" && (
+              <CommsTab
+                orderId={orderIdStr}
+                orderCountry={order.country}
+                orderAgency={order.agency}
+                orderTravelDates={`${order.travelDateStart} – ${order.travelDateEnd}`}
+              />
+            )}
             {activeTab === "automation" && <PlaceholderTab label="Automation logs" />}
             {activeTab === "vri" && <PlaceholderTab label="Apply VRI" />}
           </div>
