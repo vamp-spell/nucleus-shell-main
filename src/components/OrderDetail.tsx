@@ -47,7 +47,6 @@ import {
 } from "../data/orders";
 import { getOrderDetail, type Traveller, type DraftState, type VerdictColumnState, type ApplicationStatus, type OFCAppointment, type InterviewAppointment } from "../data/orderDetails";
 import StatusCell from "./StatusCell";
-import type { SlotBookingConfirmation } from "../services/vfsService";
 
 const ALL_ORDERS: Order[] = [...newOrders, ...attentionOrders, ...progressOrders, ...submittedOrders];
 

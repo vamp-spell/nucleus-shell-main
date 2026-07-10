@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Modal, Select, Spin, ConfigProvider, Tooltip } from 'antd';
+import { Modal, Select, Spin, ConfigProvider } from 'antd';
 import type { Traveller } from '../data/orderDetails';
 import {
   getVFSCenters,
@@ -46,11 +46,6 @@ function firstDowOfMonth(ym: string): number {
   return new Date(y, m - 1, 1).getDay(); // 0=Sun
 }
 
-function formatDateDisplay(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
 
 function formatTimeDisplay(time: string): string {
   const [h, min] = time.split(':').map(Number);
@@ -300,7 +295,6 @@ function SlotBookingModalInner({
   const [discardOpen, setDiscardOpen] = useState(false);
 
   const hasSelection = !!(date || time);
-  const centerLabel = centers.find((c) => c.id === centerId)?.label ?? '';
 
   // Reset on open
   useEffect(() => {
@@ -331,7 +325,6 @@ function SlotBookingModalInner({
   }
 
   const loadAvailability = useCallback(async (cId: string, ym: string) => {
-    const key = `${cId}:${ym}`;
     if (availCache[ym]) return; // already cached
     setLoadingAvail(true);
     try {
