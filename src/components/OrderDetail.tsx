@@ -1,6 +1,7 @@
-import { useState, useRef, type MouseEvent } from "react";
+import { useState, useRef, useEffect, type MouseEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Select, Modal, Spin, Tooltip, ConfigProvider, Dropdown } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
+import { Select, Modal, Spin, Tooltip, ConfigProvider, Dropdown, Popover, Input, Button, DatePicker, TimePicker } from 'antd';
 import { LockOutlined, CheckCircleFilled } from '@ant-design/icons';
 import CommsTab from "./CommsTab";
 import EmbassyRefModal from "./EmbassyRefModal";
@@ -8,6 +9,7 @@ import CardModal from "./CardModal";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import AddOnsDrawer from "./AddOnsDrawer";
+import SlotBookingModal from "./SlotBookingModal";
 import { addOnStringsToSelections, selectionsToDisplayNames, type SelectedAddOn } from "../data/addons";
 import {
   BackArrowIcon,
@@ -24,12 +26,17 @@ import {
   CreditCardIcon,
   WandIcon,
   CircleXIcon,
-  RefreshCwIcon,
   CircleCheckIcon,
   PlusIcon,
   SendIcon,
   XIcon,
   ExternalLinkIcon,
+  SparklesIcon,
+  SearchXIcon,
+  UploadIcon,
+  PencilIcon,
+  PackageIcon,
+  LockIcon,
 } from "./icons";
 import {
   newOrders,
@@ -38,8 +45,9 @@ import {
   submittedOrders,
   type Order,
 } from "../data/orders";
-import { getOrderDetail, type Traveller, type DraftState, type VerdictState, type ApplicationStatus } from "../data/orderDetails";
+import { getOrderDetail, type Traveller, type DraftState, type VerdictColumnState, type ApplicationStatus, type OFCAppointment, type InterviewAppointment } from "../data/orderDetails";
 import StatusCell from "./StatusCell";
+import type { SlotBookingConfirmation } from "../services/vfsService";
 
 const ALL_ORDERS: Order[] = [...newOrders, ...attentionOrders, ...progressOrders, ...submittedOrders];
 
@@ -61,6 +69,589 @@ const SINGAPORE_JURISDICTIONS = ['Chennai', 'Mumbai', 'Delhi', 'Kolkata', 'Hyder
 const JURISDICTION_COUNTRIES = ['Singapore', 'Schengen'];
 function isJurisdictionApplicable(country: string): boolean {
   return JURISDICTION_COUNTRIES.some(c => country.includes(c));
+}
+
+function isCHEOrder(country: string): boolean {
+  return country === 'Switzerland';
+}
+
+function isUSAOrder(country: string): boolean {
+  return country === 'USA';
+}
+
+const OFC_LOCATIONS = [
+  { id: 'mumbai-ofc', label: 'Mumbai OFC' },
+  { id: 'delhi-ofc', label: 'New Delhi OFC' },
+  { id: 'chennai-ofc', label: 'Chennai OFC' },
+  { id: 'kolkata-ofc', label: 'Kolkata OFC' },
+  { id: 'hyderabad-ofc', label: 'Hyderabad OFC' },
+];
+
+const CONSULATE_CITIES = [
+  { id: 'mumbai', label: 'Mumbai' },
+  { id: 'delhi', label: 'New Delhi' },
+  { id: 'chennai', label: 'Chennai' },
+  { id: 'kolkata', label: 'Kolkata' },
+  { id: 'hyderabad', label: 'Hyderabad' },
+];
+
+function formatApptDate(dateStr: string): string {
+  return dayjs(dateStr).format('MMM D');
+}
+
+function formatApptTime(timeStr: string): string {
+  return dayjs(`2000-01-01T${timeStr}`).format('h:mm A');
+}
+
+function isWithin3WorkingDays(d: Dayjs): boolean {
+  let count = 0;
+  let cur = dayjs().startOf('day');
+  const target = d.startOf('day');
+  while (cur.isBefore(target)) {
+    const dow = cur.day();
+    if (dow !== 0 && dow !== 6) count++;
+    cur = cur.add(1, 'day');
+  }
+  return count < 3;
+}
+
+function formatSlotDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+function formatSlotTime(time: string): string {
+  const [h, min] = time.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hr = h > 12 ? h - 12 : h === 0 ? 12 : h;
+  return `${hr}:${String(min).padStart(2, '0')} ${suffix}`;
+}
+
+// Slot + Center cell for CHE orders
+function SlotCell({ traveller, onOpenSlotModal }: {
+  traveller: Traveller;
+  onOpenSlotModal: (t: Traveller) => void;
+}) {
+  const hasPassportInfo = !!(traveller.passportNumber && traveller.name);
+
+  if (!traveller.slot) {
+    return (
+      <Tooltip title={!hasPassportInfo ? 'Complete document mapping before booking a slot.' : ''} placement="top">
+        <button
+          type="button"
+          onClick={() => hasPassportInfo && onOpenSlotModal(traveller)}
+          disabled={!hasPassportInfo}
+          className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
+          style={{ opacity: hasPassportInfo ? 1 : 0.5 }}
+        >
+          <PlusIcon className="w-[10px] h-[10px]" />
+          Book slot
+        </button>
+      </Tooltip>
+    );
+  }
+
+  const { date, time, centerLabel } = traveller.slot;
+  const centerShort = centerLabel.replace(' VFS Global', '');
+
+  return (
+    <div className="flex items-center gap-1.5 group">
+      <span className="text-[11px] text-[#1A1A1A]">
+        {formatSlotDate(date)} · {formatSlotTime(time)} · {centerShort}
+      </span>
+      <button
+        type="button"
+        onClick={() => onOpenSlotModal(traveller)}
+        className="opacity-0 group-hover:opacity-100 flex items-center justify-center w-5 h-5 rounded hover:bg-[#E8E8E5] transition-all cursor-pointer"
+      >
+        <PencilIcon className="w-[10px] h-[10px] text-[#888886]" />
+      </button>
+    </div>
+  );
+}
+
+// Passport Dispatch cell for CHE orders
+function PassportDispatchCell({ traveller, onUpdateDispatch }: {
+  traveller: Traveller;
+  onUpdateDispatch: (travellerId: string, trackingUrl: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState('');
+  const dispatch = traveller.passportDispatch;
+
+  if (!dispatch) return <span className="text-[11px] text-[#AAAAAA]">—</span>;
+
+  if (dispatch.status === 'dispatched' && dispatch.trackingUrl) {
+    return (
+      <a
+        href={dispatch.trackingUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[11px] text-[#185FA5] hover:underline flex items-center gap-1"
+      >
+        <PackageIcon className="w-[11px] h-[11px]" />
+        Dispatched · Track ↗
+      </a>
+    );
+  }
+
+  const popoverContent = (
+    <div style={{ width: 228, padding: '4px 0' }}>
+      <div style={{ fontSize: 11, color: '#888886', marginBottom: 6 }}>Paste courier tracking link</div>
+      <Input
+        size="small"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        placeholder="https://tracking.example.com/..."
+        onPressEnter={() => url.trim() && (onUpdateDispatch(traveller.id, url.trim()), setOpen(false), setUrl(''))}
+      />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+        <Button
+          size="small"
+          type="primary"
+          disabled={!url.trim()}
+          onClick={() => {
+            onUpdateDispatch(traveller.id, url.trim());
+            setOpen(false);
+            setUrl('');
+          }}
+        >
+          Save
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <Popover
+      content={popoverContent}
+      trigger="click"
+      open={open}
+      onOpenChange={(v) => { setOpen(v); if (!v) setUrl(''); }}
+      placement="bottomLeft"
+    >
+      <button
+        type="button"
+        className="flex items-center gap-1 text-[11px] text-[#888886] bg-[#F7F7F5] border border-[#E8E8E5] rounded-[4px] px-2 py-[3px] cursor-pointer hover:bg-[#EEEEE9] transition-colors"
+      >
+        <PackageIcon className="w-[10px] h-[10px]" />
+        Awaiting dispatch
+      </button>
+    </Popover>
+  );
+}
+
+// DS-160 Ref cell with inline Popover — USA orders
+function DS160Cell({ traveller, onSave }: {
+  traveller: Traveller;
+  onSave: (travellerId: string, code: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  const [formatError, setFormatError] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setValue(traveller.ds160?.confirmationCode ?? '');
+      setFormatError('');
+    }
+  }, [open, traveller.ds160?.confirmationCode]);
+
+  function handleSave() {
+    const trimmed = value.trim().toUpperCase();
+    if (!/^[A-Z]{2}-\d{3}-\d{5}$/.test(trimmed)) {
+      setFormatError('Check the format. Should be AA-000-00000.');
+      return;
+    }
+    onSave(traveller.id, trimmed);
+    setOpen(false);
+  }
+
+  const popoverContent = (
+    <div style={{ width: 280, padding: '4px 0' }}>
+      <div style={{ fontSize: 11, color: '#888886', marginBottom: 6 }}>DS-160 confirmation code</div>
+      <Input
+        size="small"
+        value={value}
+        onChange={(e) => { setValue(e.target.value); setFormatError(''); }}
+        placeholder="e.g. AA-000-00000"
+        onPressEnter={handleSave}
+        autoFocus
+      />
+      {formatError && <div style={{ fontSize: 11, color: '#CF1322', marginTop: 4 }}>{formatError}</div>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+        <Button size="small" type="text" onClick={() => setOpen(false)}>Cancel</Button>
+        <Button size="small" type="primary" disabled={!value.trim()} onClick={handleSave}>Save</Button>
+      </div>
+    </div>
+  );
+
+  if (traveller.ds160) {
+    return (
+      <Popover content={popoverContent} trigger="click" open={open} onOpenChange={setOpen} placement="bottomLeft">
+        <div className="flex items-center gap-1.5 group cursor-pointer">
+          <span className="text-[11px] text-[#1A1A1A] font-mono">{traveller.ds160.confirmationCode}</span>
+          <button type="button" className="opacity-0 group-hover:opacity-100 flex items-center justify-center w-5 h-5 rounded hover:bg-[#E8E8E5] transition-all cursor-pointer">
+            <PencilIcon className="w-[10px] h-[10px] text-[#888886]" />
+          </button>
+        </div>
+      </Popover>
+    );
+  }
+
+  return (
+    <Popover content={popoverContent} trigger="click" open={open} onOpenChange={setOpen} placement="bottomLeft">
+      <button
+        type="button"
+        className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
+      >
+        <PlusIcon className="w-[10px] h-[10px]" />
+        Add
+      </button>
+    </Popover>
+  );
+}
+
+// Shared cell display for OFC / Interview appointments — USA orders
+function AppointmentCell({ value, locationLabel, onOpen }: {
+  value: { date: string; time: string } | undefined;
+  locationLabel: string | undefined;
+  onOpen: () => void;
+}) {
+  if (!value) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
+      >
+        <PlusIcon className="w-[10px] h-[10px]" />
+        Add
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 group">
+      <span className="text-[11px] text-[#1A1A1A]">
+        {formatApptDate(value.date)} · {formatApptTime(value.time)}{locationLabel ? ` · ${locationLabel}` : ''}
+      </span>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="opacity-0 group-hover:opacity-100 flex items-center justify-center w-5 h-5 rounded hover:bg-[#E8E8E5] transition-all cursor-pointer"
+      >
+        <PencilIcon className="w-[10px] h-[10px] text-[#888886]" />
+      </button>
+    </div>
+  );
+}
+
+// OFC Appointment Modal — USA orders
+function OFCAppointmentModal({ open, traveller, travelDateStart, onClose, onSaved }: {
+  open: boolean;
+  traveller: Traveller | null;
+  travelDateStart: string;
+  onClose: () => void;
+  onSaved: (travellerId: string, appt: Omit<OFCAppointment, 'loggedAt'>) => void;
+}) {
+  const [locationId, setLocationId] = useState<string | null>(null);
+  const [date, setDate] = useState<Dayjs | null>(null);
+  const [time, setTime] = useState<Dayjs | null>(null);
+  const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+
+  const dirty = !!(locationId || date || time);
+  const canSave = !!(locationId && date && time);
+
+  const travelDay = dayjs(`${travelDateStart} ${new Date().getFullYear()}`, 'MMM D YYYY');
+  const dateAfterTravel = date ? date.isAfter(travelDay, 'day') : false;
+  const dateTooSoon = date ? isWithin3WorkingDays(date) : false;
+
+  useEffect(() => {
+    if (open && traveller) {
+      const ex = traveller.ofcAppointment;
+      setLocationId(ex?.locationId ?? null);
+      setDate(ex ? dayjs(ex.date) : null);
+      setTime(ex ? dayjs(`2000-01-01T${ex.time}`) : null);
+      setSaveError('');
+      setDiscardOpen(false);
+    }
+  }, [open, traveller]);
+
+  function handleClose() {
+    if (dirty) setDiscardOpen(true);
+    else onClose();
+  }
+
+  async function handleSave() {
+    if (!traveller || !locationId || !date || !time) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      await new Promise((r) => setTimeout(r, 500));
+      const loc = OFC_LOCATIONS.find((l) => l.id === locationId)!;
+      onSaved(traveller.id, {
+        date: date.format('YYYY-MM-DD'),
+        time: time.format('HH:mm'),
+        locationId,
+        locationLabel: loc.label,
+      });
+    } catch {
+      setSaveError('Failed to save. Try again.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ConfigProvider>
+      <Modal
+        open={open}
+        onCancel={handleClose}
+        footer={null}
+        width={480}
+        centered
+        maskClosable={false}
+        title={null}
+        closable={false}
+        styles={{ body: { padding: 0 } }}
+      >
+        <div style={{ padding: '24px 24px 0' }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#1A1A1A', marginBottom: 2 }}>Log OFC appointment</div>
+          <div style={{ fontSize: 12, color: '#888886', marginBottom: 20 }}>
+            {traveller?.name ?? 'Unknown traveller'} · {traveller?.id ?? '—'}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#1A1A1A', marginBottom: 6 }}>OFC location</div>
+              <Select
+                showSearch
+                value={locationId}
+                onChange={setLocationId}
+                placeholder="Select OFC location"
+                style={{ width: '100%' }}
+                options={OFC_LOCATIONS.map((l) => ({ label: l.label, value: l.id }))}
+                filterOption={(input, option) => (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())}
+              />
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#1A1A1A', marginBottom: 6 }}>Appointment date</div>
+              <DatePicker
+                value={date}
+                onChange={setDate}
+                disabledDate={(cur) => cur && cur.isBefore(dayjs().startOf('day'))}
+                format="DD MMM YYYY"
+                style={{ width: '100%' }}
+              />
+              {dateTooSoon && !dateAfterTravel && (
+                <div style={{ fontSize: 11, color: '#854F0B', marginTop: 4 }}>
+                  This appointment is very soon. Make sure documents are ready.
+                </div>
+              )}
+              {dateAfterTravel && (
+                <div style={{ fontSize: 11, color: '#854F0B', marginTop: 4 }}>
+                  This appointment is after the travel start date. Check with the team before saving.
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#1A1A1A', marginBottom: 6 }}>Appointment time</div>
+              <TimePicker
+                value={time}
+                onChange={setTime}
+                format="h:mm A"
+                minuteStep={15}
+                use12Hours
+                style={{ width: '100%' }}
+              />
+            </div>
+          </div>
+
+          {saveError && (
+            <div style={{ fontSize: 12, color: '#CF1322', marginTop: 12 }}>{saveError}</div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 24px', marginTop: 8 }}>
+          <Button type="text" onClick={handleClose}>Cancel</Button>
+          <Button type="primary" disabled={!canSave} loading={saving} onClick={handleSave}>
+            Save appointment
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={discardOpen}
+        onCancel={() => setDiscardOpen(false)}
+        onOk={() => { setDiscardOpen(false); onClose(); }}
+        okText="Discard"
+        cancelText="Cancel"
+        okButtonProps={{ danger: true }}
+        width={360}
+        centered
+        title="Discard changes?"
+      >
+        <div style={{ fontSize: 13, color: '#888886' }}>Your unsaved changes will be lost.</div>
+      </Modal>
+    </ConfigProvider>
+  );
+}
+
+// Interview Appointment Modal — USA orders
+function InterviewAppointmentModal({ open, traveller, travelDateStart, onClose, onSaved }: {
+  open: boolean;
+  traveller: Traveller | null;
+  travelDateStart: string;
+  onClose: () => void;
+  onSaved: (travellerId: string, appt: Omit<InterviewAppointment, 'loggedAt'>) => void;
+}) {
+  const [cityId, setCityId] = useState<string | null>(null);
+  const [date, setDate] = useState<Dayjs | null>(null);
+  const [time, setTime] = useState<Dayjs | null>(null);
+  const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+
+  const dirty = !!(cityId || date || time);
+  const canSave = !!(cityId && date && time);
+
+  const travelDay = dayjs(`${travelDateStart} ${new Date().getFullYear()}`, 'MMM D YYYY');
+  const dateAfterTravel = date ? date.isAfter(travelDay, 'day') : false;
+  const dateTooSoon = date ? isWithin3WorkingDays(date) : false;
+
+  useEffect(() => {
+    if (open && traveller) {
+      const ex = traveller.interviewAppointment;
+      setCityId(ex?.consulateCityId ?? null);
+      setDate(ex ? dayjs(ex.date) : null);
+      setTime(ex ? dayjs(`2000-01-01T${ex.time}`) : null);
+      setSaveError('');
+      setDiscardOpen(false);
+    }
+  }, [open, traveller]);
+
+  function handleClose() {
+    if (dirty) setDiscardOpen(true);
+    else onClose();
+  }
+
+  async function handleSave() {
+    if (!traveller || !cityId || !date || !time) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      await new Promise((r) => setTimeout(r, 500));
+      const city = CONSULATE_CITIES.find((c) => c.id === cityId)!;
+      onSaved(traveller.id, {
+        date: date.format('YYYY-MM-DD'),
+        time: time.format('HH:mm'),
+        consulateCityId: cityId,
+        consulateCityLabel: city.label,
+      });
+    } catch {
+      setSaveError('Failed to save. Try again.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ConfigProvider>
+      <Modal
+        open={open}
+        onCancel={handleClose}
+        footer={null}
+        width={480}
+        centered
+        maskClosable={false}
+        title={null}
+        closable={false}
+        styles={{ body: { padding: 0 } }}
+      >
+        <div style={{ padding: '24px 24px 0' }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#1A1A1A', marginBottom: 2 }}>Log interview appointment</div>
+          <div style={{ fontSize: 12, color: '#888886', marginBottom: 20 }}>
+            {traveller?.name ?? 'Unknown traveller'} · {traveller?.id ?? '—'}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#1A1A1A', marginBottom: 6 }}>Consulate city</div>
+              <Select
+                showSearch
+                value={cityId}
+                onChange={setCityId}
+                placeholder="Select consulate city"
+                style={{ width: '100%' }}
+                options={CONSULATE_CITIES.map((c) => ({ label: c.label, value: c.id }))}
+                filterOption={(input, option) => (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())}
+              />
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#1A1A1A', marginBottom: 6 }}>Appointment date</div>
+              <DatePicker
+                value={date}
+                onChange={setDate}
+                disabledDate={(cur) => cur && cur.isBefore(dayjs().startOf('day'))}
+                format="DD MMM YYYY"
+                style={{ width: '100%' }}
+              />
+              {dateTooSoon && !dateAfterTravel && (
+                <div style={{ fontSize: 11, color: '#854F0B', marginTop: 4 }}>
+                  This appointment is very soon. Make sure documents are ready.
+                </div>
+              )}
+              {dateAfterTravel && (
+                <div style={{ fontSize: 11, color: '#854F0B', marginTop: 4 }}>
+                  This appointment is after the travel start date. Check with the team before saving.
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#1A1A1A', marginBottom: 6 }}>Appointment time</div>
+              <TimePicker
+                value={time}
+                onChange={setTime}
+                format="h:mm A"
+                minuteStep={15}
+                use12Hours
+                style={{ width: '100%' }}
+              />
+            </div>
+          </div>
+
+          {saveError && (
+            <div style={{ fontSize: 12, color: '#CF1322', marginTop: 12 }}>{saveError}</div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 24px', marginTop: 8 }}>
+          <Button type="text" onClick={handleClose}>Cancel</Button>
+          <Button type="primary" disabled={!canSave} loading={saving} onClick={handleSave}>
+            Save appointment
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={discardOpen}
+        onCancel={() => setDiscardOpen(false)}
+        onOk={() => { setDiscardOpen(false); onClose(); }}
+        okText="Discard"
+        cancelText="Cancel"
+        okButtonProps={{ danger: true }}
+        width={360}
+        centered
+        title="Discard changes?"
+      >
+        <div style={{ fontSize: 13, color: '#888886' }}>Your unsaved changes will be lost.</div>
+      </Modal>
+    </ConfigProvider>
+  );
 }
 
 type TabId = "application" | "documents" | "comms" | "automation" | "vri";
@@ -161,81 +752,210 @@ function DraftCell({
   );
 }
 
-function VerdictCell({ traveller, onSetVerdict }: { traveller: Traveller; onSetVerdict: (id: string, v: VerdictState) => void }) {
-  const { verdict, draftState } = traveller;
+function VerdictCell({
+  traveller,
+  orderId,
+  onSetVerdict,
+  onOpenUploadModal,
+}: {
+  traveller: Traveller;
+  orderId: string;
+  onSetVerdict: (id: string, v: VerdictColumnState) => void;
+  onOpenUploadModal: (t: Traveller) => void;
+}) {
+  const navigate = useNavigate();
+  const { verdict, autoCheckDueDate } = traveller;
 
-  const verdictMenu = {
-    items: [
-      {
-        key: 'approved',
-        label: (
-          <div className="flex items-center gap-2 py-0.5">
-            <CircleCheckIcon className="w-[13px] h-[13px] text-[#3B6D11]" />
-            <span className="text-[12px]">Approved</span>
-          </div>
-        ),
-        onClick: () => onSetVerdict(traveller.id, 'approved'),
-      },
-      {
-        key: 'rejected',
-        label: (
-          <div className="flex items-center gap-2 py-0.5">
-            <CircleXIcon className="w-[13px] h-[13px] text-[#A32D2D]" />
-            <span className="text-[12px]">Rejected</span>
-          </div>
-        ),
-        onClick: () => onSetVerdict(traveller.id, 'rejected'),
-      },
-    ],
-  };
+  function handleCheckNow() {
+    onSetVerdict(traveller.id, 'checking');
+    setTimeout(() => {
+      onSetVerdict(traveller.id, 'needs_qc');
+    }, 2500);
+  }
 
-  if (verdict === "fetching") {
+  function handleRetry() {
+    onSetVerdict(traveller.id, 'checking');
+    setTimeout(() => {
+      onSetVerdict(traveller.id, 'not_found');
+    }, 2500);
+  }
+
+  if (verdict === 'empty') {
     return (
-      <div className="flex items-center gap-1.5 text-[11px] text-[#888886]">
-        <RefreshCwIcon className="w-[12px] h-[12px] animate-spin" />
-        <span>Fetching</span>
+      <Tooltip title={autoCheckDueDate ? `Verdict check opens on ${autoCheckDueDate}` : 'Verdict check not yet scheduled'} placement="top">
+        <span className="text-[12px] text-[#AAAAAA]">—</span>
+      </Tooltip>
+    );
+  }
+
+  if (verdict === 'due') {
+    const daysUntil = autoCheckDueDate
+      ? Math.max(0, Math.ceil((new Date(autoCheckDueDate).getTime() - Date.now()) / 86400000))
+      : '?';
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="text-[11px] text-[#888886]">Auto-check in {daysUntil} day{daysUntil !== 1 ? 's' : ''}</span>
+        <button
+          type="button"
+          onClick={handleCheckNow}
+          className="flex items-center gap-1 h-6 px-2 rounded border border-[#185FA5] text-[#185FA5] text-[11px] font-medium cursor-pointer hover:bg-[#E6F1FB] transition-colors"
+        >
+          Check now
+        </button>
       </div>
     );
   }
 
-  if (verdict === "approved") {
+  if (verdict === 'checking') {
     return (
-      <Dropdown menu={verdictMenu} trigger={['click']} placement="bottomLeft">
-        <div className="flex items-center gap-1.5 text-[11px] text-[#3B6D11] font-medium cursor-pointer hover:opacity-75 transition-opacity">
-          <CircleCheckIcon className="w-[13px] h-[13px]" />
-          <span>Approved</span>
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-1.5">
+          <div
+            className="w-[6px] h-[6px] rounded-full bg-[#185FA5] shrink-0"
+            style={{ animation: 'verdictPulse 1.5s ease-in-out infinite' }}
+          />
+          <span className="text-[11px] text-[#185FA5] font-medium">Checking inbox...</span>
         </div>
-      </Dropdown>
+        <span className="text-[10px] text-[#888886] pl-[14px]">Scanning catchall for visa email</span>
+      </div>
     );
   }
 
-  if (verdict === "rejected") {
+  if (verdict === 'needs_qc') {
     return (
-      <Dropdown menu={verdictMenu} trigger={['click']} placement="bottomLeft">
-        <div className="flex items-center gap-1.5 text-[11px] text-[#A32D2D] font-medium cursor-pointer hover:opacity-75 transition-opacity">
-          <CircleXIcon className="w-[13px] h-[13px]" />
-          <span>Rejected</span>
-        </div>
-      </Dropdown>
-    );
-  }
-
-  // none — show set button only if drafted
-  if (draftState === 'drafted') {
-    return (
-      <Dropdown menu={verdictMenu} trigger={['click']} placement="bottomLeft">
+      <div className="flex flex-col gap-0.5">
         <button
           type="button"
-          className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
+          onClick={() => navigate(`/orders/${orderId}/verdict-qc/${traveller.id}`)}
+          className="flex items-center gap-1 h-6 px-2 rounded border border-[#854F0B] text-[#854F0B] text-[12px] font-medium cursor-pointer hover:bg-[#FAEEDA] transition-colors"
         >
-          <PlusIcon className="w-[10px] h-[10px]" />
-          <span>Set verdict</span>
+          <SparklesIcon className="w-[11px] h-[11px]" />
+          Needs QC
         </button>
-      </Dropdown>
+        <span className="text-[10px] text-[#888886]">Visa found · AI analyzed</span>
+      </div>
+    );
+  }
+
+  if (verdict === 'not_found') {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-1 text-[11px] text-[#888886]">
+          <SearchXIcon className="w-[11px] h-[11px]" />
+          <span>Not found in inbox</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="flex items-center gap-1 h-6 px-2 rounded border border-[#185FA5] text-[#185FA5] text-[11px] font-medium cursor-pointer hover:bg-[#E6F1FB] transition-colors"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenUploadModal(traveller)}
+            className="flex items-center gap-1 h-6 px-2 rounded border border-[#E8E8E5] text-[#888886] text-[11px] cursor-pointer hover:bg-[#F7F7F5] transition-colors"
+          >
+            <UploadIcon className="w-[10px] h-[10px]" />
+            Upload
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (verdict === 'approved') {
+    return (
+      <button
+        type="button"
+        onClick={() => navigate(`/orders/${orderId}/verdict-qc/${traveller.id}`)}
+        className="flex items-center gap-1.5 text-[11px] text-[#3B6D11] font-medium cursor-pointer hover:opacity-75 transition-opacity"
+      >
+        <CircleCheckIcon className="w-[13px] h-[13px]" />
+        <span>Approved</span>
+      </button>
+    );
+  }
+
+  if (verdict === 'rejected') {
+    return (
+      <button
+        type="button"
+        onClick={() => navigate(`/orders/${orderId}/verdict-qc/${traveller.id}`)}
+        className="flex items-center gap-1.5 text-[11px] text-[#A32D2D] font-medium cursor-pointer hover:opacity-75 transition-opacity"
+      >
+        <CircleXIcon className="w-[13px] h-[13px]" />
+        <span>Rejected</span>
+      </button>
     );
   }
 
   return <span className="text-[12px] text-[#AAAAAA]">—</span>;
+}
+
+// Upload verdict modal
+function UploadVerdictModal({
+  traveller,
+  onClose,
+  onUploaded,
+}: {
+  traveller: Traveller | null;
+  onClose: () => void;
+  onUploaded: (travellerId: string) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  function handleFile() {
+    if (!traveller) return;
+    setUploading(true);
+    onUploaded(traveller.id);
+    setTimeout(() => {
+      setUploading(false);
+      onClose();
+    }, 1200);
+  }
+
+  return (
+    <Modal
+      title={`Upload verdict document${traveller ? ` — ${traveller.name}` : ''}`}
+      open={traveller !== null}
+      onCancel={onClose}
+      footer={null}
+      width={440}
+      centered
+      destroyOnClose
+    >
+      <div style={{ paddingTop: 12 }}>
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => { e.preventDefault(); setDragging(false); handleFile(); }}
+          onClick={handleFile}
+          style={{
+            border: `2px dashed ${dragging ? '#185FA5' : '#CCCCCA'}`,
+            borderRadius: 8,
+            padding: '32px 16px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            background: dragging ? '#E6F1FB' : '#FAFAF8',
+            transition: 'all 0.15s',
+          }}
+        >
+          <UploadIcon className="w-6 h-6 text-[#AAAAAA] mx-auto mb-2" />
+          <div style={{ fontSize: 13, color: '#1A1A1A', marginBottom: 4 }}>
+            {uploading ? 'Uploading...' : 'Drop the visa document here or browse'}
+          </div>
+          <div style={{ fontSize: 11, color: '#888886' }}>PDF, JPG, PNG · max 10 MB</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 11, color: '#854F0B' }}>
+          <SparklesIcon className="w-[12px] h-[12px]" />
+          <span>AI QC will run automatically once the document is uploaded</span>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 interface TravellerRowProps {
@@ -243,14 +963,23 @@ interface TravellerRowProps {
   isSelected: boolean;
   copiedEmbassyId: string | null;
   orderCountry: string;
+  orderId: string;
+  isCHE: boolean;
+  isUSA: boolean;
   onToggleSelect: (id: string) => void;
   onOpenDraftModal: (t: Traveller) => void;
   onCopyEmbassyRef: (id: string, value: string, e: MouseEvent) => void;
   jurisdictionFlash: Set<string>;
   onSaveJurisdiction: (id: string, val: string) => void;
-  onSetVerdict: (travellerId: string, verdict: VerdictState) => void;
+  onSetVerdict: (travellerId: string, verdict: VerdictColumnState) => void;
   onSaveField: (travellerId: string, field: 'embassyRefId' | 'card', value: string) => void;
   onSetApplicationStatus: (travellerId: string, status: ApplicationStatus) => void;
+  onOpenUploadModal: (t: Traveller) => void;
+  onOpenSlotModal: (t: Traveller) => void;
+  onUpdateDispatch: (travellerId: string, trackingUrl: string) => void;
+  onSaveDS160: (travellerId: string, code: string) => void;
+  onOpenOFCModal: (t: Traveller) => void;
+  onOpenInterviewModal: (t: Traveller) => void;
 }
 
 function TravellerRow({
@@ -258,6 +987,9 @@ function TravellerRow({
   isSelected,
   copiedEmbassyId,
   orderCountry,
+  orderId,
+  isCHE,
+  isUSA,
   onToggleSelect,
   onOpenDraftModal,
   onCopyEmbassyRef,
@@ -266,9 +998,30 @@ function TravellerRow({
   onSetVerdict,
   onSaveField,
   onSetApplicationStatus,
+  onOpenUploadModal,
+  onOpenSlotModal,
+  onUpdateDispatch,
+  onSaveDS160,
+  onOpenOFCModal,
+  onOpenInterviewModal,
 }: TravellerRowProps) {
   const [embassyRefModalOpen, setEmbassyRefModalOpen] = useState(false);
   const [cardModalOpen, setCardModalOpen] = useState(false);
+
+  const rowMenu = {
+    items: [
+      {
+        key: 'upload_verdict',
+        label: (
+          <div className="flex items-center gap-2 py-0.5">
+            <UploadIcon className="w-[13px] h-[13px] text-[#888886]" />
+            <span className="text-[12px]">Upload verdict manually</span>
+          </div>
+        ),
+        onClick: () => onOpenUploadModal(traveller),
+      },
+    ],
+  };
 
   return (
     <div className={`flex min-h-[52px] border-b border-[#F1EFE8] items-center ${isSelected ? "bg-[#F0F4FF]" : "bg-white hover:bg-[#F9F9F7]"} transition-colors ${traveller.applicationStatus === 'void' ? 'opacity-60' : ''}`}>
@@ -299,8 +1052,8 @@ function TravellerRow({
         />
       </div>
 
-      {/* Jurisdiction */}
-      {isJurisdictionApplicable(orderCountry) && (
+      {/* Jurisdiction — standard orders only */}
+      {!isCHE && !isUSA && isJurisdictionApplicable(orderCountry) && (
         <div className="flex-1 px-3 flex items-center">
           <JurisdictionCell
             travellerId={traveller.id}
@@ -311,80 +1064,146 @@ function TravellerRow({
         </div>
       )}
 
-      {/* Embassy Ref */}
-      <div className="flex-1 px-3 flex items-center gap-2">
-        {traveller.embassyRefId ? (
-          <button
-            type="button"
-            onClick={() => setEmbassyRefModalOpen(true)}
-            className="flex items-center gap-1.5 text-[11px] text-[#1A1A1A] cursor-pointer hover:bg-[#F1EFE8] rounded px-1 py-0.5 transition-colors group"
-          >
-            <HashIcon className="w-[11px] h-[11px] text-[#888886]" />
-            <span>{traveller.embassyRefId}</span>
-          </button>
+      {/* Embassy Ref — hidden for USA */}
+      {!isUSA && <div className="flex-1 px-3 flex items-center gap-2">
+        {isCHE ? (
+          // CHE: read-only, auto-populated by slot booking
+          <div className="flex items-center gap-1.5">
+            {traveller.embassyRefId ? (
+              <>
+                <HashIcon className="w-[11px] h-[11px] text-[#888886] shrink-0" />
+                <span className="text-[11px] text-[#1A1A1A] font-mono">{traveller.embassyRefId}</span>
+                {traveller.embassyRefAutoPopulated && (
+                  <Tooltip title="Auto-populated from VFS booking" placement="top">
+                    <LockIcon className="w-[10px] h-[10px] text-[#AAAAAA]" />
+                  </Tooltip>
+                )}
+              </>
+            ) : (
+              <span className="text-[11px] text-[#AAAAAA] italic">Auto-fills on booking</span>
+            )}
+          </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setEmbassyRefModalOpen(true)}
-            className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
-          >
-            <PlusIcon className="w-[10px] h-[10px]" />
-            <span>Add</span>
-          </button>
+          <>
+            {traveller.embassyRefId ? (
+              <button
+                type="button"
+                onClick={() => setEmbassyRefModalOpen(true)}
+                className="flex items-center gap-1.5 text-[11px] text-[#1A1A1A] cursor-pointer hover:bg-[#F1EFE8] rounded px-1 py-0.5 transition-colors group"
+              >
+                <HashIcon className="w-[11px] h-[11px] text-[#888886]" />
+                <span>{traveller.embassyRefId}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEmbassyRefModalOpen(true)}
+                className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
+              >
+                <PlusIcon className="w-[10px] h-[10px]" />
+                <span>Add</span>
+              </button>
+            )}
+            {traveller.embassyRefId && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onCopyEmbassyRef(traveller.id, traveller.embassyRefId, e); }}
+                className="flex items-center justify-center p-[3px] rounded hover:bg-[#E8E8E5] cursor-pointer"
+                aria-label="Copy Embassy Ref"
+              >
+                <CopyIcon className={`w-[11px] h-[11px] ${copiedEmbassyId === traveller.id ? "text-[#3B6D11]" : "text-[#CCCCCA]"}`} />
+              </button>
+            )}
+            <EmbassyRefModal
+              open={embassyRefModalOpen}
+              existing={traveller.embassyRefId}
+              orderId=""
+              travellerId={traveller.id}
+              travellerName={traveller.name}
+              onClose={() => setEmbassyRefModalOpen(false)}
+              onSave={(val) => { onSaveField(traveller.id, 'embassyRefId', val); setEmbassyRefModalOpen(false); }}
+            />
+          </>
         )}
-        {traveller.embassyRefId && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onCopyEmbassyRef(traveller.id, traveller.embassyRefId, e); }}
-            className="flex items-center justify-center p-[3px] rounded hover:bg-[#E8E8E5] cursor-pointer"
-            aria-label="Copy Embassy Ref"
-          >
-            <CopyIcon className={`w-[11px] h-[11px] ${copiedEmbassyId === traveller.id ? "text-[#3B6D11]" : "text-[#CCCCCA]"}`} />
-          </button>
-        )}
-        <EmbassyRefModal
-          open={embassyRefModalOpen}
-          existing={traveller.embassyRefId}
-          orderId=""
-          travellerId={traveller.id}
-          travellerName={traveller.name}
-          onClose={() => setEmbassyRefModalOpen(false)}
-          onSave={(val) => { onSaveField(traveller.id, 'embassyRefId', val); setEmbassyRefModalOpen(false); }}
-        />
-      </div>
+      </div>}
 
-      {/* Card */}
-      <div className="flex-1 px-3 flex items-center gap-1.5">
-        {traveller.card ? (
-          <button
-            type="button"
-            onClick={() => setCardModalOpen(true)}
-            className="flex items-center gap-1.5 text-[11px] text-[#1A1A1A] cursor-pointer hover:bg-[#F1EFE8] rounded px-1 py-0.5 transition-colors"
-          >
-            <CreditCardIcon className="w-[11px] h-[11px] text-[#888886]" />
-            <span>···{traveller.card}</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setCardModalOpen(true)}
-            className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
-          >
-            <PlusIcon className="w-[10px] h-[10px]" />
-            <span>Add card</span>
-          </button>
-        )}
-        <CardModal
-          open={cardModalOpen}
-          existingLast4={traveller.card}
-          existingCardholderName=""
-          orderId=""
-          travellerId={traveller.id}
-          travellerName={traveller.name}
-          onClose={() => setCardModalOpen(false)}
-          onSave={(last4, _cardholderName, _brand) => { onSaveField(traveller.id, 'card', last4); setCardModalOpen(false); }}
-        />
-      </div>
+      {/* Card — standard orders only */}
+      {!isCHE && !isUSA && (
+        <div className="flex-1 px-3 flex items-center gap-1.5">
+          {traveller.card ? (
+            <button
+              type="button"
+              onClick={() => setCardModalOpen(true)}
+              className="flex items-center gap-1.5 text-[11px] text-[#1A1A1A] cursor-pointer hover:bg-[#F1EFE8] rounded px-1 py-0.5 transition-colors"
+            >
+              <CreditCardIcon className="w-[11px] h-[11px] text-[#888886]" />
+              <span>···{traveller.card}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCardModalOpen(true)}
+              className="flex items-center gap-1 text-[11px] text-[#888886] border border-dashed border-[#CCCCCA] rounded-[4px] px-2 py-[3px] cursor-pointer hover:border-[#888886] hover:text-[#1A1A1A] transition-colors"
+            >
+              <PlusIcon className="w-[10px] h-[10px]" />
+              <span>Add card</span>
+            </button>
+          )}
+          <CardModal
+            open={cardModalOpen}
+            existingLast4={traveller.card}
+            existingCardholderName=""
+            orderId=""
+            travellerId={traveller.id}
+            travellerName={traveller.name}
+            onClose={() => setCardModalOpen(false)}
+            onSave={(last4, _cardholderName, _brand) => { onSaveField(traveller.id, 'card', last4); setCardModalOpen(false); }}
+          />
+        </div>
+      )}
+
+      {/* Slot + Center — CHE orders only */}
+      {isCHE && (
+        <div className="flex-1 px-3 flex items-center">
+          <SlotCell traveller={traveller} onOpenSlotModal={onOpenSlotModal} />
+        </div>
+      )}
+
+      {/* Passport Dispatch — CHE orders only */}
+      {isCHE && (
+        <div className="flex-1 px-3 flex items-center">
+          <PassportDispatchCell traveller={traveller} onUpdateDispatch={onUpdateDispatch} />
+        </div>
+      )}
+
+      {/* DS-160 Ref — USA orders only */}
+      {isUSA && (
+        <div className="flex-1 px-3 flex items-center">
+          <DS160Cell traveller={traveller} onSave={onSaveDS160} />
+        </div>
+      )}
+
+      {/* OFC Appointment — USA orders only */}
+      {isUSA && (
+        <div className="flex-1 px-3 flex items-center">
+          <AppointmentCell
+            value={traveller.ofcAppointment}
+            locationLabel={traveller.ofcAppointment?.locationLabel}
+            onOpen={() => onOpenOFCModal(traveller)}
+          />
+        </div>
+      )}
+
+      {/* Interview Appointment — USA orders only */}
+      {isUSA && (
+        <div className="flex-1 px-3 flex items-center">
+          <AppointmentCell
+            value={traveller.interviewAppointment}
+            locationLabel={traveller.interviewAppointment?.consulateCityLabel}
+            onOpen={() => onOpenInterviewModal(traveller)}
+          />
+        </div>
+      )}
 
       {/* Draft */}
       <div className="flex-1 px-3 flex items-center">
@@ -393,7 +1212,25 @@ function TravellerRow({
 
       {/* Verdict */}
       <div className="flex-1 px-3 flex items-center">
-        <VerdictCell traveller={traveller} onSetVerdict={onSetVerdict} />
+        <VerdictCell
+          traveller={traveller}
+          orderId={orderId}
+          onSetVerdict={onSetVerdict}
+          onOpenUploadModal={onOpenUploadModal}
+        />
+      </div>
+
+      {/* Row "..." menu */}
+      <div className="w-8 flex items-center justify-center px-1 shrink-0">
+        <Dropdown menu={rowMenu} trigger={['click']} placement="bottomRight">
+          <button
+            type="button"
+            className="flex items-center justify-center w-6 h-6 rounded hover:bg-[#F1EFE8] cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ opacity: undefined }}
+          >
+            <DotsHorizontalIcon className="w-[13px] h-[13px] text-[#888886]" />
+          </button>
+        </Dropdown>
       </div>
     </div>
   );
@@ -404,15 +1241,24 @@ interface ApplicationTabProps {
   selectedIds: Set<string>;
   copiedEmbassyId: string | null;
   orderCountry: string;
+  orderId: string;
+  isCHE: boolean;
+  isUSA: boolean;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
   onOpenDraftModal: (t: Traveller) => void;
   onCopyEmbassyRef: (id: string, value: string, e: MouseEvent) => void;
   jurisdictionFlash: Set<string>;
   onSaveJurisdiction: (travellerId: string, value: string) => void;
-  onSetVerdict: (travellerId: string, verdict: VerdictState) => void;
+  onSetVerdict: (travellerId: string, verdict: VerdictColumnState) => void;
   onSaveField: (travellerId: string, field: 'embassyRefId' | 'card', value: string) => void;
   onSetApplicationStatus: (travellerId: string, status: ApplicationStatus) => void;
+  onOpenUploadModal: (t: Traveller) => void;
+  onOpenSlotModal: (t: Traveller) => void;
+  onUpdateDispatch: (travellerId: string, trackingUrl: string) => void;
+  onSaveDS160: (travellerId: string, code: string) => void;
+  onOpenOFCModal: (t: Traveller) => void;
+  onOpenInterviewModal: (t: Traveller) => void;
   setSelectedIds: (ids: Set<string>) => void;
 }
 
@@ -421,6 +1267,9 @@ function ApplicationTab({
   selectedIds,
   copiedEmbassyId,
   orderCountry,
+  orderId,
+  isCHE,
+  isUSA,
   onToggleSelect,
   onToggleSelectAll,
   onOpenDraftModal,
@@ -430,11 +1279,18 @@ function ApplicationTab({
   onSetVerdict,
   onSaveField,
   onSetApplicationStatus,
+  onOpenUploadModal,
+  onOpenSlotModal,
+  onUpdateDispatch,
+  onSaveDS160,
+  onOpenOFCModal,
+  onOpenInterviewModal,
   setSelectedIds,
 }: ApplicationTabProps) {
   const draftedCount = travellers.filter((t) => t.draftState === "drafted").length;
   const selectedArray = Array.from(selectedIds);
   const readySelected = selectedArray.filter((id) => travellers.find((t) => t.id === id)?.draftState === "ready");
+  const needsQCTravellers = travellers.filter((t) => t.verdict === 'needs_qc');
 
   if (travellers.length === 0) {
     return (
@@ -447,6 +1303,20 @@ function ApplicationTab({
 
   return (
     <div className="w-full">
+      {/* Needs QC banner */}
+      {needsQCTravellers.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-[#FFFBF3] border-b border-[#F0D9A0]">
+          <SparklesIcon className="w-[13px] h-[13px] text-[#854F0B] shrink-0" />
+          <span className="text-[12px] font-medium text-[#854F0B]">
+            {needsQCTravellers.length} verdict{needsQCTravellers.length > 1 ? 's' : ''} ready for QC
+          </span>
+          <span className="text-[#CCCCCA]">·</span>
+          <span className="text-[12px] text-[#888886]">
+            {needsQCTravellers.map(t => t.name).join(', ')}
+          </span>
+        </div>
+      )}
+
       {/* Column headers */}
       <div className="flex bg-[#F7F7F5] border-b border-[#E8E8E5]">
         <div className="w-8 flex items-center justify-center px-2 py-[6px]">
@@ -459,13 +1329,19 @@ function ApplicationTab({
         </div>
         <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Traveller</div>
         <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Status</div>
-        {isJurisdictionApplicable(orderCountry) && (
+        {!isCHE && !isUSA && isJurisdictionApplicable(orderCountry) && (
           <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Jurisdiction</div>
         )}
-        <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Embassy Ref</div>
-        <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Card</div>
+        {!isUSA && <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Embassy Ref</div>}
+        {!isCHE && !isUSA && <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Card</div>}
+        {isCHE && <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Slot · Center</div>}
+        {isCHE && <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Passport Dispatch</div>}
+        {isUSA && <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">DS-160 Ref</div>}
+        {isUSA && <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">OFC Appointment</div>}
+        {isUSA && <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Interview Appt</div>}
         <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Draft</div>
         <div className="flex-1 px-3 py-[6px] text-[10px] font-medium text-[#888886]">Verdict</div>
+        <div className="w-8" />
       </div>
 
       {/* Bulk action bar */}
@@ -527,6 +1403,9 @@ function ApplicationTab({
           isSelected={selectedIds.has(traveller.id)}
           copiedEmbassyId={copiedEmbassyId}
           orderCountry={orderCountry}
+          orderId={orderId}
+          isCHE={isCHE}
+          isUSA={isUSA}
           onToggleSelect={onToggleSelect}
           onOpenDraftModal={onOpenDraftModal}
           onCopyEmbassyRef={onCopyEmbassyRef}
@@ -535,6 +1414,12 @@ function ApplicationTab({
           onSetVerdict={onSetVerdict}
           onSaveField={onSaveField}
           onSetApplicationStatus={onSetApplicationStatus}
+          onOpenUploadModal={onOpenUploadModal}
+          onOpenSlotModal={onOpenSlotModal}
+          onUpdateDispatch={onUpdateDispatch}
+          onSaveDS160={onSaveDS160}
+          onOpenOFCModal={onOpenOFCModal}
+          onOpenInterviewModal={onOpenInterviewModal}
         />
       ))}
 
@@ -583,6 +1468,10 @@ export default function OrderDetail() {
   const [selectedAddOns, setSelectedAddOns] = useState<SelectedAddOn[]>(
     detail ? addOnStringsToSelections(detail.addOns) : []
   );
+  const [uploadModalTraveller, setUploadModalTraveller] = useState<Traveller | null>(null);
+  const [slotModalTraveller, setSlotModalTraveller] = useState<Traveller | null>(null);
+  const [ofcModalTraveller, setOFCModalTraveller] = useState<Traveller | null>(null);
+  const [interviewModalTraveller, setInterviewModalTraveller] = useState<Traveller | null>(null);
 
   if (!order || !detail) {
     return (
@@ -657,7 +1546,7 @@ export default function OrderDetail() {
     }, 1800);
   }
 
-  function setVerdict(travellerId: string, verdict: VerdictState) {
+  function setVerdict(travellerId: string, verdict: VerdictColumnState) {
     setTravellers(prev => prev.map(t => t.id === travellerId ? { ...t, verdict } : t));
   }
 
@@ -667,6 +1556,64 @@ export default function OrderDetail() {
         ? { ...t, applicationStatus: newStatus, manualStatus: { by: 'Meera Nair', at: 'Just now' } }
         : t
     ));
+  }
+
+  function handleBooked(travellerId: string, confirmation: import('../services/vfsService').SlotBookingConfirmation) {
+    setTravellers(prev => prev.map(t => {
+      if (t.id !== travellerId) return t;
+      return {
+        ...t,
+        embassyRefId: confirmation.bookingReference,
+        embassyRefAutoPopulated: true,
+        slot: {
+          date: confirmation.appointmentDate,
+          time: confirmation.appointmentTime,
+          centerId: confirmation.centerId,
+          centerLabel: confirmation.centerLabel,
+          bookingReference: confirmation.bookingReference,
+        },
+        draftState: t.draftState === 'locked' ? 'ready' : t.draftState,
+      };
+    }));
+    setSlotModalTraveller(null);
+  }
+
+  function updateDispatch(travellerId: string, trackingUrl: string) {
+    setTravellers(prev => prev.map(t =>
+      t.id === travellerId
+        ? { ...t, passportDispatch: { status: 'dispatched', trackingUrl, updatedAt: new Date().toISOString() } }
+        : t
+    ));
+  }
+
+  function saveDS160(travellerId: string, code: string) {
+    setTravellers(prev => prev.map(t =>
+      t.id === travellerId
+        ? { ...t, ds160: { confirmationCode: code, loggedAt: new Date().toISOString() } }
+        : t
+    ));
+  }
+
+  function saveOFCAppointment(travellerId: string, appt: Omit<OFCAppointment, 'loggedAt'>) {
+    setTravellers(prev => prev.map(t =>
+      t.id === travellerId
+        ? { ...t, ofcAppointment: { ...appt, loggedAt: new Date().toISOString() } }
+        : t
+    ));
+    const name = travellers.find(t => t.id === travellerId)?.name ?? 'Traveller';
+    showToast(`OFC appointment logged for ${name}`);
+    setOFCModalTraveller(null);
+  }
+
+  function saveInterviewAppointment(travellerId: string, appt: Omit<InterviewAppointment, 'loggedAt'>) {
+    setTravellers(prev => prev.map(t =>
+      t.id === travellerId
+        ? { ...t, interviewAppointment: { ...appt, loggedAt: new Date().toISOString() } }
+        : t
+    ));
+    const name = travellers.find(t => t.id === travellerId)?.name ?? 'Traveller';
+    showToast(`Interview appointment logged for ${name}`);
+    setInterviewModalTraveller(null);
   }
 
   function saveJurisdiction(travellerId: string, value: string) {
@@ -706,6 +1653,10 @@ export default function OrderDetail() {
             from { transform: scale(0.5); opacity: 0; }
             to   { transform: scale(1);   opacity: 1; }
           }
+          @keyframes verdictPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.75); }
+          }
         `}</style>
         <Sidebar isExpanded={isExpanded} onToggle={() => setIsExpanded((v) => !v)} />
         <div
@@ -719,7 +1670,7 @@ export default function OrderDetail() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => navigate(-1)}
+                onClick={() => navigate('/')}
                 className="flex items-center justify-center w-7 h-7 rounded hover:bg-[#F1EFE8] cursor-pointer"
                 aria-label="Back to Orders"
               >
@@ -928,6 +1879,9 @@ export default function OrderDetail() {
                 selectedIds={selectedIds}
                 copiedEmbassyId={copiedEmbassyId}
                 orderCountry={order.country}
+                orderId={orderIdStr}
+                isCHE={isCHEOrder(order.country)}
+                isUSA={isUSAOrder(order.country)}
                 onToggleSelect={toggleSelect}
                 onToggleSelectAll={toggleSelectAll}
                 onOpenDraftModal={openDraftModal}
@@ -937,6 +1891,12 @@ export default function OrderDetail() {
                 onSetVerdict={setVerdict}
                 onSaveField={saveField}
                 onSetApplicationStatus={setApplicationStatus}
+                onOpenUploadModal={setUploadModalTraveller}
+                onOpenSlotModal={setSlotModalTraveller}
+                onUpdateDispatch={updateDispatch}
+                onSaveDS160={saveDS160}
+                onOpenOFCModal={setOFCModalTraveller}
+                onOpenInterviewModal={setInterviewModalTraveller}
                 setSelectedIds={setSelectedIds}
               />
             )}
@@ -1047,6 +2007,42 @@ export default function OrderDetail() {
           onClose={() => setAddOnsDrawerOpen(false)}
           existingSelections={selectedAddOns}
           onUpdate={async (sels) => { setSelectedAddOns(sels); }}
+        />
+
+        <UploadVerdictModal
+          traveller={uploadModalTraveller}
+          onClose={() => setUploadModalTraveller(null)}
+          onUploaded={(travellerId) => {
+            setTravellers(prev => prev.map(t => t.id === travellerId ? { ...t, verdict: 'checking' as VerdictColumnState } : t));
+            setTimeout(() => {
+              setTravellers(prev => prev.map(t => t.id === travellerId ? { ...t, verdict: 'needs_qc' as VerdictColumnState } : t));
+            }, 2500);
+          }}
+        />
+
+        <SlotBookingModal
+          open={slotModalTraveller !== null}
+          traveller={slotModalTraveller}
+          orderId={orderIdStr}
+          travelDateStart={order.travelDateStart}
+          onClose={() => setSlotModalTraveller(null)}
+          onBooked={handleBooked}
+        />
+
+        <OFCAppointmentModal
+          open={ofcModalTraveller !== null}
+          traveller={ofcModalTraveller}
+          travelDateStart={order.travelDateStart}
+          onClose={() => setOFCModalTraveller(null)}
+          onSaved={saveOFCAppointment}
+        />
+
+        <InterviewAppointmentModal
+          open={interviewModalTraveller !== null}
+          traveller={interviewModalTraveller}
+          travelDateStart={order.travelDateStart}
+          onClose={() => setInterviewModalTraveller(null)}
+          onSaved={saveInterviewAppointment}
         />
 
         <Modal

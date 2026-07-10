@@ -41,6 +41,7 @@ export const progressOrders: Order[] = [
   { id: 'SMV-GEO-00563', country: 'Georgia', flag: '🇬🇪', visaType: 'POP', visaCategory: 'Multiple entry', pax: 5, bulkProgress: null, travelDateStart: 'Jul 25', travelDateEnd: 'Aug 02', daysAway: 43, agency: 'Triponomic', docStatus: 'pending', whatChanged: 'waiting-ta', timeAgo: '3h ago', chatUnread: false, escalated: false, blocked: true, group: 'waiting' },
   { id: 'SMV-CHE-00748', country: 'Switzerland', flag: '🇨🇭', visaType: 'POP', visaCategory: 'Multiple entry', pax: 2, bulkProgress: null, travelDateStart: 'Jul 15', travelDateEnd: 'Jul 27', daysAway: 33, agency: 'Dial and Travel', docStatus: 'pending', whatChanged: 'waiting-vendor', timeAgo: '5h ago', chatUnread: false, escalated: false, blocked: true, group: 'waiting' },
   { id: 'SMV-ISR-00008', country: 'Israel', flag: '🇮🇱', visaType: 'POP', visaCategory: 'Single entry', pax: 1, bulkProgress: null, travelDateStart: 'Jun 27', travelDateEnd: 'Jul 12', daysAway: 15, agency: 'Waymates Tour', docStatus: 'uploaded', whatChanged: 'docs-uploaded', timeAgo: '45m ago', chatUnread: false, escalated: false, blocked: false, group: 'actionable' },
+  { id: 'SMV-USA-00101', country: 'USA', flag: '🇺🇸', visaType: 'POP', visaCategory: 'B1/B2', pax: 3, bulkProgress: null, travelDateStart: 'Jul 21', travelDateEnd: 'Aug 03', daysAway: 11, agency: 'Krishna Booking', docStatus: 'uploaded', whatChanged: 'waiting-vendor', timeAgo: '2h ago', chatUnread: false, escalated: false, blocked: true, group: 'waiting' },
 ]
 
 export const submittedOrders: Order[] = [

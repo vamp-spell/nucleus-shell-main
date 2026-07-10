@@ -6,6 +6,7 @@ import OrdersContent from "./components/OrdersContent";
 import ColumnsPanel from "./components/ColumnsPanel";
 import OrderDetail from "./components/OrderDetail";
 import DocumentMapping from "./components/DocumentMapping";
+import VerdictQCPage from "./components/VerdictQCPage";
 
 const COLUMN_ORDER_STORAGE_KEY = "nucleus-column-order";
 const DEFAULT_COLUMN_ORDER = ["traveldate", "agency", "docs", "changed", "chat"];
@@ -89,6 +90,7 @@ function App() {
       />
       <Route path="/orders/:orderId" element={<OrderDetail />} />
       <Route path="/orders/:orderId/classify-documents" element={<DocumentMapping />} />
+      <Route path="/orders/:orderId/verdict-qc/:travellerId" element={<VerdictQCPage />} />
     </Routes>
   );
 }
