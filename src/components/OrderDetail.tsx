@@ -1855,7 +1855,13 @@ export default function OrderDetail() {
             <div className="flex items-center gap-2 border-l border-[#E8E8E5] pl-3 py-1.5">
               <button
                 type="button"
-                onClick={() => navigate(`/orders/${order.id}/classify-documents`)}
+                onClick={() => {
+                  const isAgentPrefill = ['Indonesia', 'Vietnam'].includes(order.country);
+                  const dest = isAgentPrefill
+                    ? `/orders/${order.id}/checkpoint`
+                    : `/orders/${order.id}/classify-documents`;
+                  navigate(dest);
+                }}
                 className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-[#1A1A1A] text-white text-[12px] font-medium cursor-pointer hover:bg-[#333333] transition-colors"
               >
                 <FolderArrowIcon className="w-[13px] h-[13px]" />
