@@ -14,7 +14,9 @@ import {
   theme,
   Tooltip,
   Input,
+  Checkbox,
 } from 'antd';
+import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
 import {
   generateMockDocs,
   getMockTravellers,
@@ -26,7 +28,7 @@ import {
   type UploadedDocument,
   type TravellerDoc,
 } from '../data/documentMapping';
-import { newOrders, attentionOrders, progressOrders, submittedOrders } from '../data/orders';
+import { newOrders, attentionOrders, progressOrders, submittedOrders, type Order } from '../data/orders';
 
 const { Text } = Typography;
 const { useToken } = theme;
@@ -35,7 +37,7 @@ const ALL_ORDERS = [...newOrders, ...attentionOrders, ...progressOrders, ...subm
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type Stage = 'mapping' | 'verification';
+type Stage = 'mapping' | 'verification' | 'generation';
 
 interface FormField {
   fieldId: string;
@@ -232,6 +234,7 @@ function StageSwitcher({
   const stages: { key: Stage; label: string; complete: boolean }[] = [
     { key: 'mapping', label: 'Map documents', complete: mappingComplete },
     { key: 'verification', label: 'Verify form', complete: verificationComplete },
+    { key: 'generation', label: 'Generate documents', complete: false },
   ];
 
   return (
@@ -1919,6 +1922,707 @@ function FormVerificationBody({
   );
 }
 
+// ─── Helper for extracting verified form field values ────────────────────────
+
+function getFieldValue(sections: FormSection[] | undefined, label: string): string {
+  if (!sections) return '';
+  for (const s of sections) {
+    const f = s.fields.find(field => field.label.toLowerCase() === label.toLowerCase());
+    if (f) return f.value ?? '';
+  }
+  return '';
+}
+
+// ─── DocumentGenerationBody ──────────────────────────────────────────────────
+
+function DocumentGenerationBody({
+  travellers,
+  fieldsByTraveller,
+  selectedTravellerId,
+  onSelectTraveller,
+  exitPath,
+  navigate,
+  order,
+}: {
+  travellers: TravellerDoc[];
+  fieldsByTraveller: Record<string, FormSection[]>;
+  selectedTravellerId: string | null;
+  onSelectTraveller: (id: string) => void;
+  exitPath: string;
+  navigate: (path: string) => void;
+  order: Order | undefined;
+}) {
+  const { token } = useToken();
+  const [messageApi, contextHolder] = message.useMessage();
+
+  // Auto-select first traveller on mount
+  useEffect(() => {
+    if (!selectedTravellerId && travellers.length > 0) {
+      onSelectTraveller(String(travellers[0].id));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [documentType, setDocumentType] = useState<'cover_letter' | 'itinerary'>('cover_letter');
+  const [tone, setTone] = useState<'formal' | 'detailed' | 'urgent' | 'simple'>('formal');
+
+  // Local state for manually edited/overridden details per traveller
+  const [editedFields, setEditedFields] = useState<Record<string, Record<string, string>>>({});
+
+  const activeId = selectedTravellerId || (travellers[0] ? String(travellers[0].id) : '');
+  const activeTraveller = travellers.find(t => String(t.id) === activeId);
+  const activeSections = useMemo(() => fieldsByTraveller[activeId] ?? [], [fieldsByTraveller, activeId]);
+
+
+  // Extract initial values for current active traveller using useMemo
+  const defaultFullName = useMemo(() => {
+    const surname = getFieldValue(activeSections, 'Surname');
+    const givenName = getFieldValue(activeSections, 'Given name(s)');
+    return [givenName, surname].filter(Boolean).join(' ') || activeTraveller?.fullName || '';
+  }, [activeSections, activeTraveller]);
+
+  const defaultNationality = useMemo(() => getFieldValue(activeSections, 'Nationality'), [activeSections]);
+  const defaultPassportNumber = useMemo(() => getFieldValue(activeSections, 'Passport number'), [activeSections]);
+  const defaultIssueDate = useMemo(() => getFieldValue(activeSections, 'Date of issue'), [activeSections]);
+  const defaultExpiryDate = useMemo(() => getFieldValue(activeSections, 'Date of expiry'), [activeSections]);
+  const defaultOccupation = useMemo(() => getFieldValue(activeSections, 'Occupation'), [activeSections]);
+  const defaultEmployer = useMemo(() => getFieldValue(activeSections, 'Employer name'), [activeSections]);
+  const defaultPurpose = useMemo(() => getFieldValue(activeSections, 'Purpose of visit') || 'Tourism', [activeSections]);
+  const defaultDeparture = useMemo(() => getFieldValue(activeSections, 'Intended departure date'), [activeSections]);
+  const defaultReturn = useMemo(() => getFieldValue(activeSections, 'Intended return date'), [activeSections]);
+  const defaultDuration = useMemo(() => getFieldValue(activeSections, 'Duration of stay (days)') || '14', [activeSections]);
+  const defaultPort = useMemo(() => getFieldValue(activeSections, 'Port of entry'), [activeSections]);
+  const defaultHotelName = useMemo(() => getFieldValue(activeSections, 'Hotel / host name'), [activeSections]);
+  const defaultHotelAddress = useMemo(() => getFieldValue(activeSections, 'Hotel address'), [activeSections]);
+  const defaultCity = useMemo(() => getFieldValue(activeSections, 'City'), [activeSections]);
+  const defaultEmbassy = useMemo(() => order ? `Embassy of ${order.country}` : 'Embassy of Azerbaijan', [order]);
+
+  const defaultSchedule = useMemo(() => {
+    const durationNum = Number(defaultDuration) || 14;
+    const dest = defaultCity || order?.country || 'Baku';
+    const hotel = defaultHotelName || 'Hotel';
+    const hotelAddr = defaultHotelAddress || 'Address';
+    const port = defaultPort || 'Airport';
+
+    return `Day 1: Arrival & Check-in
+- Arrive at ${port} on flight booking.
+- Proceed to accommodation: ${hotel} (${hotelAddr}).
+- Check-in and rest.
+
+Day 2 - Day ${durationNum - 1}: Sightseeing & Travel Activities
+- Explore ${dest} and surrounding areas.
+- Engage in ${defaultPurpose.toLowerCase()} activities as planned.
+- Reside at ${hotel}.
+
+Day ${durationNum}: Check-out & Departure
+- Check-out from ${hotel}.
+- Transfer to ${port} for return departure.
+- Depart.`;
+  }, [defaultDuration, defaultCity, defaultHotelName, defaultHotelAddress, defaultPort, defaultPurpose, order]);
+
+  // Get current active fields (fallback to defaults dynamically)
+  const currentFields = useMemo(() => {
+    const edited = editedFields[activeId] || {};
+    return {
+      fullName: edited.fullName !== undefined ? edited.fullName : defaultFullName,
+      nationality: edited.nationality !== undefined ? edited.nationality : defaultNationality,
+      passportNumber: edited.passportNumber !== undefined ? edited.passportNumber : defaultPassportNumber,
+      issueDate: edited.issueDate !== undefined ? edited.issueDate : defaultIssueDate,
+      expiryDate: edited.expiryDate !== undefined ? edited.expiryDate : defaultExpiryDate,
+      occupation: edited.occupation !== undefined ? edited.occupation : defaultOccupation,
+      employer: edited.employer !== undefined ? edited.employer : defaultEmployer,
+      purpose: edited.purpose !== undefined ? edited.purpose : defaultPurpose,
+      departureDate: edited.departureDate !== undefined ? edited.departureDate : defaultDeparture,
+      returnDate: edited.returnDate !== undefined ? edited.returnDate : defaultReturn,
+      duration: edited.duration !== undefined ? edited.duration : defaultDuration,
+      port: edited.port !== undefined ? edited.port : defaultPort,
+      hotelName: edited.hotelName !== undefined ? edited.hotelName : defaultHotelName,
+      hotelAddress: edited.hotelAddress !== undefined ? edited.hotelAddress : defaultHotelAddress,
+      city: edited.city !== undefined ? edited.city : defaultCity,
+      embassy: edited.embassy !== undefined ? edited.embassy : defaultEmbassy,
+      customNotes: edited.customNotes !== undefined ? edited.customNotes : '',
+      itinerarySchedule: edited.itinerarySchedule !== undefined ? edited.itinerarySchedule : defaultSchedule,
+      bookFlight: edited.bookFlight !== undefined ? edited.bookFlight : 'false',
+      bookHotel: edited.bookHotel !== undefined ? edited.bookHotel : 'false',
+    };
+  }, [
+    editedFields,
+    activeId,
+    defaultFullName,
+    defaultNationality,
+    defaultPassportNumber,
+    defaultIssueDate,
+    defaultExpiryDate,
+    defaultOccupation,
+    defaultEmployer,
+    defaultPurpose,
+    defaultDeparture,
+    defaultReturn,
+    defaultDuration,
+    defaultPort,
+    defaultHotelName,
+    defaultHotelAddress,
+    defaultCity,
+    defaultEmbassy,
+    defaultSchedule,
+  ]);
+
+  const handleFieldChange = (key: string, value: string) => {
+    setEditedFields(prev => ({
+      ...prev,
+      [activeId]: {
+        ...(prev[activeId] || {}),
+        [key]: value
+      }
+    }));
+  };
+
+  const generatedText = useMemo(() => {
+    const f = currentFields;
+    const country = order?.country || 'Azerbaijan';
+    const visaCategory = order?.visaCategory || 'Multiple entry';
+
+    const bookingStatusText = (f.bookFlight === 'true' && f.bookHotel === 'true')
+      ? 'I have enclosed the confirmed travel bookings for my flight and hotel accommodation, reserved via Nucleus Partner Services.'
+      : f.bookFlight === 'true'
+      ? 'I have enclosed the confirmed flight booking reserved via Nucleus Partner Services and my hotel reservation for my trip.'
+      : f.bookHotel === 'true'
+      ? 'I have enclosed my flight itinerary and confirmed hotel reservation booked via Nucleus Partner Services.'
+      : 'I have enclosed all the necessary supporting documents, including my passport copies, confirmed flight itinerary, hotel booking reservation, and bank statements, for your review.';
+
+    if (documentType === 'cover_letter') {
+      if (tone === 'formal') {
+        return `To,
+The Visa Officer,
+${f.embassy || `Embassy of ${country}`}
+
+Subject: Request for ${visaCategory} Visa Support - ${f.fullName} (Passport No: ${f.passportNumber})
+
+Dear Honorable Consul,
+
+I, ${f.fullName}, a citizen of ${f.nationality || 'India'}, holding Passport Number ${f.passportNumber} (issued on ${f.issueDate || 'N/A'}, expiring on ${f.expiryDate || 'N/A'}), currently employed as a ${f.occupation || 'N/A'} at ${f.employer || 'N/A'}, am writing to support my application for a ${visaCategory} visa to visit ${country}.
+
+My primary purpose of visit is ${f.purpose || 'Tourism'}. I intend to enter ${country} on ${f.departureDate || 'N/A'} via ${f.port || 'Port of Entry'} and depart on ${f.returnDate || 'N/A'}, staying for a total duration of ${f.duration || 'N/A'} days. During my stay, I will be residing at:
+${f.hotelName || 'Hotel'}
+${f.hotelAddress || 'Address'}${f.city ? `, ${f.city}` : ''}
+
+${bookingStatusText} I kindly request you to grant me the visa.
+
+${f.customNotes ? `${f.customNotes}\n\n` : ''}Thank you for your time and consideration.
+
+Sincerely,
+
+_______________________
+${f.fullName}`;
+      } else if (tone === 'detailed') {
+        const hotelBookingNote = f.bookHotel === 'true' ? ' (confirmed and reserved via Nucleus Partner Services)' : '';
+        return `To,
+The Visa Officer,
+${f.embassy || `Embassy of ${country}`}
+
+Subject: Visa Application Cover Letter - ${f.fullName}
+
+Dear Visa Officer,
+
+I am writing to express my sincere interest in visiting your beautiful country, ${country}. As an avid traveller and a professional ${f.occupation || 'N/A'} at ${f.employer || 'N/A'}, I have always been fascinated by the rich cultural heritage and modern landmarks of ${country}, particularly the city of ${f.city || 'Baku'}.
+
+I hold Passport Number ${f.passportNumber} and have planned a detailed visit starting from ${f.departureDate || 'N/A'} until ${f.returnDate || 'N/A'} (totaling ${f.duration || 'N/A'} days). I will be entering through ${f.port || 'Port of Entry'} and staying at ${f.hotelName || 'Hotel'} located at ${f.hotelAddress || 'Address'}${hotelBookingNote}.
+
+My primary purpose is ${f.purpose || 'Tourism'}. I have meticulously planned my activities to ensure I experience the best of ${country} while strictly abiding by all visa rules and immigration regulations. All expenses for this journey will be fully sponsored by myself, and I have attached complete financial statements to confirm this.
+
+${f.customNotes ? `${f.customNotes}\n\n` : ''}I look forward to this incredible journey and appreciate your kind assistance in processing my visa application.
+
+Warm regards,
+
+_______________________
+${f.fullName}`;
+      } else if (tone === 'urgent') {
+        const flightNote = f.bookFlight === 'true' ? ' (Confirmed Booking via Partner Services)' : '';
+        const hotelNote = f.bookHotel === 'true' ? ' (Confirmed Booking via Partner Services)' : '';
+        return `To,
+The Visa Officer,
+${f.embassy || `Embassy of ${country}`}
+
+Subject: URGENT Visa Request - Support for ${f.fullName}
+
+Dear Sir/Madam,
+
+Please accept this cover letter in support of my visa application for ${country}. I hold Passport Number ${f.passportNumber} and am currently working as a ${f.occupation || 'N/A'} at ${f.employer || 'N/A'}.
+
+Due to upcoming travel dates, I respectfully request an expedited review. My travel is scheduled to begin on ${f.departureDate || 'N/A'} and conclude on ${f.returnDate || 'N/A'}, for a total stay of ${f.duration || 'N/A'} days.
+
+Travel Summary:
+- Purpose: ${f.purpose || 'Tourism'}
+- Entry Port: ${f.port || 'Port of Entry'}${flightNote}
+- Residing at: ${f.hotelName || 'Hotel'}, ${f.hotelAddress || 'Address'}${f.city ? `, ${f.city}` : ''}${hotelNote}
+
+All required supporting documentation (passport copies, confirmed flight itinerary, hotel booking, and bank statements) are attached. Thank you for your urgent attention to this application.
+
+${f.customNotes ? `${f.customNotes}\n\n` : ''}Sincerely,
+
+_______________________
+${f.fullName}`;
+      } else {
+        return `To Whom It May Concern,
+
+I am writing to submit my visa application for ${country}. 
+
+My personal and travel details are as follows:
+- Name: ${f.fullName}
+- Passport Number: ${f.passportNumber}
+- Occupation: ${f.occupation || 'N/A'}
+- Purpose: ${f.purpose || 'Tourism'}
+- Arrival: ${f.departureDate || 'N/A'} (via ${f.port || 'Port of Entry'}${f.bookFlight === 'true' ? ' - Booked via Partner Services' : ''})
+- Departure: ${f.returnDate || 'N/A'}
+- Hotel: ${f.hotelName || 'Hotel'}, ${f.hotelAddress || 'Address'}${f.bookHotel === 'true' ? ' (Reserved via Partner Services)' : ''}
+
+All supporting documents are attached. Please contact me if any further information is required.
+
+${f.customNotes ? `${f.customNotes}\n\n` : ''}Regards,
+
+_______________________
+${f.fullName}`;
+      }
+    } else {
+      const bookingHeader = (f.bookFlight === 'true' || f.bookHotel === 'true')
+        ? `=========================================
+BOOKED VIA NUCLEUS PARTNER SERVICES
+=========================================
+${f.bookFlight === 'true' ? `- Flight Ticket: Confirmed & Booked via Partner Agency\n` : ''}${f.bookHotel === 'true' ? `- Hotel Accommodation: Reserved & Confirmed via Partner Agency\n` : ''}
+` : '';
+
+      return `FLIGHT & ACCOMMODATION ITINERARY
+Applicant: ${f.fullName} | Passport: ${f.passportNumber || 'N/A'}
+Destination: ${country} (${f.city || 'Baku'})
+Travel Dates: ${f.departureDate || 'N/A'} - ${f.returnDate || 'N/A'}
+Duration: ${f.duration || 'N/A'} Days
+
+=========================================
+DETAILED DAILY TRAVEL PLAN
+=========================================
+${f.itinerarySchedule}
+
+${bookingHeader}${f.customNotes ? `\nAdditional Notes:\n${f.customNotes}` : ''}`;
+    }
+  }, [currentFields, documentType, tone, order]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(generatedText).then(() => {
+      messageApi.success('Copied to clipboard!');
+    }).catch(() => {
+      messageApi.error('Failed to copy to clipboard');
+    });
+  };
+
+  const handleDownload = () => {
+    const filename = `${currentFields.fullName.replace(/\s+/g, '_')}_${documentType}.txt`;
+    const element = document.createElement("a");
+    const file = new Blob([generatedText], {type: 'text/plain'});
+    element.href = URL.createObjectURL(file);
+    element.download = filename;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+    messageApi.success('Download started!');
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      {contextHolder}
+      
+      {/* Main 3-col layout */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+        {/* Left pane — traveller list */}
+        <div
+          style={{
+            width: 200,
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            borderRight: `1px solid ${token.colorBorderSecondary}`,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              padding: '6px 10px',
+              fontSize: 10,
+              fontWeight: 500,
+              letterSpacing: '0.05em',
+              color: token.colorTextTertiary,
+              background: token.colorFillTertiary,
+              borderBottom: `1px solid ${token.colorBorderSecondary}`,
+              flexShrink: 0,
+            }}
+          >
+            TRAVELLERS
+          </div>
+          <TravellerList
+            travellers={travellers}
+            fieldsByTraveller={fieldsByTraveller}
+            selectedId={activeId}
+            onSelect={onSelectTraveller}
+          />
+        </div>
+
+        {/* Center pane — parameter settings */}
+        <div
+          style={{
+            flex: '0 0 35%',
+            display: 'flex',
+            flexDirection: 'column',
+            borderRight: `1px solid ${token.colorBorderSecondary}`,
+            overflow: 'hidden',
+            background: token.colorBgContainer,
+          }}
+        >
+          <div
+            style={{
+              padding: '6px 10px',
+              fontSize: 10,
+              fontWeight: 500,
+              letterSpacing: '0.05em',
+              color: token.colorTextTertiary,
+              background: token.colorFillTertiary,
+              borderBottom: `1px solid ${token.colorBorderSecondary}`,
+              flexShrink: 0,
+            }}
+          >
+            DOCUMENT PARAMETERS
+          </div>
+          <div style={{ padding: '16px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Document Type Switcher */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: token.colorTextSecondary, marginBottom: 6 }}>
+                DOCUMENT TYPE
+              </div>
+              <Segmented
+                block
+                value={documentType}
+                onChange={(val) => setDocumentType(val as 'cover_letter' | 'itinerary')}
+                options={[
+                  { label: 'Cover Letter', value: 'cover_letter' },
+                  { label: 'Travel Itinerary', value: 'itinerary' }
+                ]}
+              />
+            </div>
+
+            {/* Tone Selector */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: token.colorTextSecondary, marginBottom: 6 }}>
+                PERSONALITY / TONE
+              </div>
+              <Select
+                style={{ width: '100%' }}
+                value={tone}
+                onChange={setTone}
+                options={[
+                  { label: 'Professional / Formal', value: 'formal' },
+                  { label: 'Detailed / Expressive', value: 'detailed' },
+                  { label: 'Urgent / Direct', value: 'urgent' },
+                  { label: 'Simple / General', value: 'simple' }
+                ]}
+              />
+              <div style={{ fontSize: 9, color: token.colorTextTertiary, marginTop: 4, fontStyle: 'italic' }}>
+                {tone === 'formal' && 'Polite, standard format suited for all official embassies.'}
+                {tone === 'detailed' && 'Adds travel details, destination sightseeing details, and history.'}
+                {tone === 'urgent' && 'Shorter, concise format highlighting urgent process timelines.'}
+                {tone === 'simple' && 'Basic format covering essential travel dates and passport details.'}
+              </div>
+            </div>
+
+            {/* Booking Services */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: token.colorTextSecondary, marginBottom: 6 }}>
+                BOOKING SERVICES (ADD-ONS)
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Checkbox
+                  checked={currentFields.bookFlight === 'true'}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    handleFieldChange('bookFlight', checked ? 'true' : 'false');
+                    if (checked) {
+                      messageApi.success('Flight booking service added to order (+₹200)');
+                    }
+                  }}
+                >
+                  Book Flight Ticket <span style={{ fontSize: 10, color: token.colorTextTertiary }}>(+₹200)</span>
+                </Checkbox>
+                <Checkbox
+                  checked={currentFields.bookHotel === 'true'}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    handleFieldChange('bookHotel', checked ? 'true' : 'false');
+                    if (checked) {
+                      messageApi.success('Hotel booking service added to order (+₹200)');
+                    }
+                  }}
+                >
+                  Book Hotel Accommodation <span style={{ fontSize: 10, color: token.colorTextTertiary }}>(+₹200)</span>
+                </Checkbox>
+              </div>
+            </div>
+
+            <Divider style={{ margin: '8px 0' }} />
+
+            {/* Form details section */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: token.colorTextSecondary, textTransform: 'uppercase' }}>
+                Verified Details (Edit to override)
+              </div>
+
+              <div>
+                <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Full Name</span>
+                <Input
+                  size="small"
+                  value={currentFields.fullName}
+                  onChange={(e) => handleFieldChange('fullName', e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Passport Number</span>
+                  <Input
+                    size="small"
+                    value={currentFields.passportNumber}
+                    onChange={(e) => handleFieldChange('passportNumber', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Nationality</span>
+                  <Input
+                    size="small"
+                    value={currentFields.nationality}
+                    onChange={(e) => handleFieldChange('nationality', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {documentType === 'cover_letter' && (
+                <>
+                  <div>
+                    <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Consulate / Embassy</span>
+                    <Input
+                      size="small"
+                      value={currentFields.embassy}
+                      onChange={(e) => handleFieldChange('embassy', e.target.value)}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Occupation</span>
+                      <Input
+                        size="small"
+                        value={currentFields.occupation}
+                        onChange={(e) => handleFieldChange('occupation', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Employer Name</span>
+                      <Input
+                        size="small"
+                        value={currentFields.employer}
+                        onChange={(e) => handleFieldChange('employer', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Departure Date</span>
+                  <Input
+                    size="small"
+                    value={currentFields.departureDate}
+                    onChange={(e) => handleFieldChange('departureDate', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Return Date</span>
+                  <Input
+                    size="small"
+                    value={currentFields.returnDate}
+                    onChange={(e) => handleFieldChange('returnDate', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Duration of Stay (Days)</span>
+                  <Input
+                    size="small"
+                    value={currentFields.duration}
+                    onChange={(e) => handleFieldChange('duration', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Port of Entry</span>
+                  <Input
+                    size="small"
+                    value={currentFields.port}
+                    onChange={(e) => handleFieldChange('port', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Hotel / Host Name</span>
+                  <Input
+                    size="small"
+                    value={currentFields.hotelName}
+                    onChange={(e) => handleFieldChange('hotelName', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>City</span>
+                  <Input
+                    size="small"
+                    value={currentFields.city}
+                    onChange={(e) => handleFieldChange('city', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Hotel Address</span>
+                <Input
+                  size="small"
+                  value={currentFields.hotelAddress}
+                  onChange={(e) => handleFieldChange('hotelAddress', e.target.value)}
+                />
+              </div>
+
+              <div>
+                <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Purpose of Visit</span>
+                <Input
+                  size="small"
+                  value={currentFields.purpose}
+                  onChange={(e) => handleFieldChange('purpose', e.target.value)}
+                />
+              </div>
+
+              {documentType === 'itinerary' && (
+                <div>
+                  <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Daily Itinerary Details / Schedule</span>
+                  <Input.TextArea
+                    rows={6}
+                    size="small"
+                    placeholder="Enter day-by-day itinerary details..."
+                    value={currentFields.itinerarySchedule}
+                    onChange={(e) => handleFieldChange('itinerarySchedule', e.target.value)}
+                    style={{ fontSize: 11, fontFamily: 'Courier New, monospace' }}
+                  />
+                </div>
+              )}
+
+              <div>
+                <span style={{ fontSize: 10, color: token.colorTextDescription, display: 'block', marginBottom: 3 }}>Additional Notes / Special Instructions</span>
+                <Input.TextArea
+                  rows={3}
+                  size="small"
+                  placeholder="Enter details to append to the document..."
+                  value={currentFields.customNotes}
+                  onChange={(e) => handleFieldChange('customNotes', e.target.value)}
+                  style={{ fontSize: 11 }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right pane — Live preview */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div
+            style={{
+              padding: '6px 10px',
+              fontSize: 10,
+              fontWeight: 500,
+              letterSpacing: '0.05em',
+              color: token.colorTextTertiary,
+              background: token.colorFillTertiary,
+              borderBottom: `1px solid ${token.colorBorderSecondary}`,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>LIVE DOCUMENT PREVIEW</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                size="small"
+                type="text"
+                icon={<CopyOutlined />}
+                onClick={handleCopy}
+                style={{ fontSize: 10, height: 20, padding: '0 6px' }}
+              >
+                Copy Text
+              </Button>
+              <Button
+                size="small"
+                type="text"
+                icon={<DownloadOutlined />}
+                onClick={handleDownload}
+                style={{ fontSize: 10, height: 20, padding: '0 6px' }}
+              >
+                Download (.txt)
+              </Button>
+            </div>
+          </div>
+          <div style={{ flex: 1, padding: 24, overflowY: 'auto', background: token.colorBgLayout, display: 'flex', justifyContent: 'center' }}>
+            <div
+              style={{
+                width: '100%',
+                maxWidth: 640,
+                background: '#ffffff',
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: 4,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                padding: '40px 32px',
+                fontFamily: documentType === 'cover_letter' ? 'Times New Roman, serif' : 'Courier New, monospace',
+                fontSize: 12,
+                lineHeight: 1.6,
+                color: '#1f1f1f',
+                whiteSpace: 'pre-wrap',
+                minHeight: 500,
+              }}
+            >
+              {generatedText}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div
+        style={{
+          height: 40,
+          background: token.colorBgContainer,
+          borderTop: `1px solid ${token.colorBorderSecondary}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 16px',
+          flexShrink: 0,
+        }}
+      >
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          Auto-generating from Verified Form data for {activeTraveller?.fullName || 'traveller'}.
+        </Text>
+        <Button type="primary" onClick={() => navigate(exitPath)}>
+          Done, return to order
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── SpotCheckEntryBanner ─────────────────────────────────────────────────────
 
 function SpotCheckEntryBanner({ reason, onDismiss }: { reason: string; onDismiss: () => void }) {
@@ -2657,7 +3361,7 @@ function InnerDocumentMapping({
             </div>
           </div>
         </div>
-      ) : (
+      ) : activeStage === 'verification' ? (
         <FormVerificationBody
           travellers={travellers}
           fieldsByTraveller={verifFieldsByTraveller}
@@ -2672,6 +3376,16 @@ function InnerDocumentMapping({
           onDocSyncChange={onVerifDocSyncChange}
           navigate={navigate}
           exitPath={exitPath}
+        />
+      ) : (
+        <DocumentGenerationBody
+          travellers={travellers}
+          fieldsByTraveller={verifFieldsByTraveller}
+          selectedTravellerId={verifSelectedTravellerId}
+          onSelectTraveller={onVerifSelectTraveller}
+          exitPath={exitPath}
+          navigate={navigate}
+          order={order}
         />
       )}
 
